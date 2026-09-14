@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
+  <meta name="theme-color" content="#111111" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Stundenplan" />
+  <title>Stundenplan</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="logo.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="logo.svg" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div>
+        <p class="brand">RETHINK.</p>
+        <h1>Stundenplan</h1>
+      </div>
+      <button id="pdfBtn" class="primary">PDF</button>
+    </header>
+
+    <section class="toolbar" aria-label="Stundenplan Einstellungen">
+      <label>
+        <span>Titel</span>
+        <input id="titleInput" value="Mein Stundenplan" maxlength="50" />
+      </label>
+      <button id="addTimeBtn" class="secondary">+ Stunde</button>
+      <button id="resetBtn" class="ghost">Leeren</button>
+    </section>
+
+    <section class="table-wrap">
+      <table id="scheduleTable" aria-label="Stundenplan">
+        <thead>
+          <tr>
+            <th class="time-col">Zeit</th>
+            <th>Mo</th>
+            <th>Di</th>
+            <th>Mi</th>
+            <th>Do</th>
+            <th>Fr</th>
+            <th>Sa</th>
+            <th>So</th>
+          </tr>
+        </thead>
+        <tbody id="scheduleBody"></tbody>
+      </table>
+    </section>
+
+    <p class="hint">Zeiten per Auswahlrolle. Zeilen am ≡-Griff nach oben oder unten ziehen. Tagesnamen lassen sich ebenfalls verschieben. H hebt einen Tag hervor, | setzt eine senkrechte Trennlinie. Alles wird automatisch gespeichert.</p>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

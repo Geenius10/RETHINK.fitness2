@@ -1,0 +1,69 @@
+:root{
+  --bg:#f5f5f3;
+  --card:#ffffff;
+  --text:#111111;
+  --muted:#77736f;
+  --line:#ddd9d4;
+  --accent:#111111;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overscroll-behavior:none}
+body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+button,input{font:inherit}
+button{cursor:pointer}
+.app{width:min(1180px,100%);margin:0 auto;padding:22px}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}
+.brand{margin:0 0 4px;font-size:12px;letter-spacing:.18em;font-weight:800}
+h1{margin:0;font-size:clamp(28px,5vw,44px);letter-spacing:-.045em}
+.toolbar{display:grid;grid-template-columns:minmax(180px,1fr) auto auto;gap:10px;align-items:end;margin-bottom:14px}
+.toolbar label{display:grid;gap:6px}.toolbar span{font-size:12px;color:var(--muted);font-weight:700}
+input,button{border-radius:12px;border:1px solid var(--line);min-height:46px}
+input{width:100%;background:var(--card);padding:0 13px;outline:none}
+input:focus{border-color:#777}
+button{padding:0 16px;font-weight:750;background:var(--card);color:var(--text)}
+.primary{background:var(--accent);color:white;border-color:var(--accent);min-width:78px}
+.secondary{background:#e9e6e2}.ghost{background:transparent}
+.table-wrap{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:auto;box-shadow:0 8px 30px rgba(0,0,0,.035)}
+table{width:100%;min-width:980px;border-collapse:collapse;table-layout:fixed}
+th,td{border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+th:last-child,td:last-child{border-right:0}tbody tr:last-child td{border-bottom:0}
+th{height:44px;background:#efede9;font-size:13px;text-align:center}.time-col{width:132px}
+td{height:84px;padding:0;vertical-align:top;position:relative}
+.cell-input,.time-input{display:block;width:100%;height:100%;min-height:84px;border:0;border-radius:0;background:transparent;resize:none;padding:12px;font:inherit;outline:none;color:var(--text)}
+.time-input{min-height:84px;text-align:center;font-size:13px;font-weight:700;padding:12px 4px}
+.cell-input:focus,.time-input:focus{background:#faf8f5}
+.row-delete{position:absolute;left:50%;bottom:3px;transform:translateX(-50%);border:0;background:transparent;color:#aaa;padding:0;font-size:11px;min-height:18px;opacity:0;transition:.15s}
+td.time-cell:hover .row-delete,td.time-cell:focus-within .row-delete{opacity:1}
+.hint{margin:12px 2px 0;color:var(--muted);font-size:12px}
+@media(max-width:680px){.app{padding:15px}.toolbar{grid-template-columns:1fr 1fr}.toolbar label{grid-column:1/-1}.toolbar button{width:100%}.table-wrap{border-radius:13px}.hint{font-size:11px}}
+@media print{body{background:white}.app{padding:0}.topbar,.toolbar,.hint{display:none}.table-wrap{border:0;box-shadow:none;border-radius:0}table{min-width:0}th,td{border-color:#bbb}.row-delete{display:none}}
+
+.time-pickers{height:100%;min-height:84px;display:flex;align-items:center;justify-content:center;gap:3px;padding:8px 4px 22px}
+.time-select{appearance:auto;-webkit-appearance:menulist;border:0;background:transparent;color:var(--text);font:700 12px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;outline:none;min-width:0;width:58px;text-align:center;padding:0}
+.time-pickers span{font-size:11px;color:var(--muted)}
+
+/* Day controls */
+.day-head{position:relative;touch-action:none;user-select:none;-webkit-user-select:none}
+.day-head-inner{min-height:58px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:5px;padding:5px 2px}
+.drag-day{display:block;width:100%;font-weight:800;cursor:grab;touch-action:none}
+.reordering .drag-day{cursor:grabbing}
+.day-tools{display:flex;justify-content:center;gap:4px}
+.mini-tool{min-height:22px;height:22px;min-width:24px;padding:0 5px;border-radius:6px;border:1px solid #d2cec8;background:rgba(255,255,255,.7);font-size:10px;line-height:20px;font-weight:850;color:#888}
+.mini-tool.active{background:#111;color:#fff;border-color:#111}
+.day-highlight{background:#f4f0ff !important}
+td.day-highlight .cell-input:focus{background:#eee7ff}
+.day-divider{border-right:3px solid #79726c !important}
+.day-head.day-divider{border-right:3px solid #79726c !important}
+@media(max-width:680px){
+  th{height:58px}
+  .day-head-inner{min-height:58px}
+  .mini-tool{min-width:22px;padding:0 4px}
+}
+
+
+/* Row reordering */
+.time-cell{position:relative}
+.row-handle{position:absolute;left:5px;top:5px;z-index:3;width:28px;height:28px;min-height:28px;padding:0;border:1px solid var(--line);border-radius:7px;background:rgba(255,255,255,.92);font-size:18px;line-height:26px;font-weight:800;color:#777;cursor:grab;touch-action:none}
+.row-reordering .row-handle{cursor:grabbing}
+.row-reordering #scheduleBody tr{transition:transform .08s ease}
+@media(max-width:680px){.row-handle{left:3px;top:3px;width:26px;height:26px;min-height:26px;font-size:17px}}
