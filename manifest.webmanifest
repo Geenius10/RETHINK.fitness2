@@ -1,9 +1,27 @@
 {
-  "name":"RETHINK. Stundenplan",
-  "short_name":"Stundenplan",
-  "start_url":"./",
-  "display":"standalone",
-  "background_color":"#f5f5f3",
-  "theme_color":"#111111",
-  "icons":[{"src":"logo.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
+  "name": "RETHINK.fitness",
+  "short_name": "RETHINK.fitness",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#d9d9de",
+  "theme_color": "#111114",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "icon-180.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "version": "2026.09.16"
 }
