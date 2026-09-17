@@ -68,23 +68,10 @@ const __rt=window.__rt={
  }
  if($('liveAddExercise'))$('liveAddExercise').onclick=()=>openExercisePicker(startUnifiedLiveAdd,{detailAdd:true});
 
- window.advancePartnerDraftFlow=function(){
-  const f=planAddFlow;if(!f)return;
-  const seed=Array.isArray(f.pendingSeeds)&&f.pendingSeeds.length?f.pendingSeeds.shift():null;
-  if(seed){f.current=clone(seed.exercise);f.current._draftOrder=Number(seed.order);f.step='config';renderPlanAddConfig();return}
-  f.current=null;f.step='partnerPicker';renderPartnerExercisePicker()
- };
-
  window.confirmPlanAddDraft=function(){
   if(!planAddFlow?.current)return;savePlanAddFormToDraft();
   const validation=validateExerciseDraft(planAddFlow.current);if(validation)return toast(validation);
   let e=clone(planAddFlow.current),method=e.setTechnique||'standard';
-  if(method==='giant'){
-   e.methodData=e.methodData||{};
-   const requested=Number($('paGiantCount')?.value||e.methodData.giantCount||planAddFlow.group?.target||3);
-   e.methodData.giantCount=Math.min(6,Math.max(3,requested));
-   if(planAddFlow.group){planAddFlow.group.method='giant';planAddFlow.group.target=e.methodData.giantCount}
-  }
   // Editing one member of an existing connected series: configure it as a single exercise,
   // then put it back into exactly the same group slot on commit.
   if(planAddFlow.memberGroup&&!planAddFlow.memberMethodExplicit){
@@ -102,7 +89,7 @@ const __rt=window.__rt={
    if(!Number.isFinite(Number(e._draftOrder)))e._draftOrder=planAddFlow.drafts.length;
    e.groupPosition=Number(e._draftOrder);
    planAddFlow.drafts.push(e);
-   if(planAddFlow.drafts.length<planAddFlow.group.target){advancePartnerDraftFlow();return}
+   if(planAddFlow.drafts.length<planAddFlow.group.target){planAddFlow.current=null;renderPartnerExercisePicker();return}
    const master=planAddFlow.drafts[0],gid=planAddFlow.group.id;
    planAddFlow.drafts.forEach(d=>{d.setTechnique=planAddFlow.group.method;d.techniqueGroup=gid;d.sets=master.sets;d.rest=master.rest});
    commitPlanAddFlow();return
@@ -146,8 +133,32 @@ const __rt=window.__rt={
   toast(wasEdit?'Änderung übernommen':(drafts.length>1?`${drafts.length} Übungen hinzugefügt`:'Übung hinzugefügt'))
  };
 
- // Plan-editor state/exit/save behavior is owned exclusively by app-core.js.
+ // Existing plan outside a workout: ask exactly once on leaving/saving.
+ // Save overwrites the original plan. Discard closes the editor and leaves the saved original untouched.
+ function askExistingPlanSaveOrDiscard({toPlans=false}={}){
+  openSheet('Plan speichern?',`<p class="muted">Möchtest du die Änderungen an diesem Plan speichern?</p><div class="save-choice-stack"><button id="confirmExistingPlanSave" class="primary">Plan speichern</button><button id="discardExistingPlanChanges" class="secondary danger">Änderungen verwerfen</button><button id="stayInExistingPlan" class="secondary">Weiter bearbeiten</button></div>`);
+  $('confirmExistingPlanSave').onclick=()=>{if(persistExistingEditorPlan()){closeSheet({all:true});editorDirty=false;closePage();if(toPlans)showTab('plans');renderPlans()}};
+  $('discardExistingPlanChanges').onclick=()=>{closeSheet({all:true});editorDirty=false;closePage();if(toPlans)showTab('plans');renderPlans()};
+  $('stayInExistingPlan').onclick=()=>closeSheet({all:true});
+ }
+ if($('planEditorBack'))$('planEditorBack').onclick=()=>{
+  if(currentPlan?._editingSourceId){if(!editorHasChanges()){closePage();renderPlans();return}askExistingPlanSaveOrDiscard({toPlans:false});return}
+  if(!editorHasChanges()){closePage();return}
+  openSheet('Planbearbeitung verlassen?',`<p class="muted">Du hast einen neuen, noch nicht gespeicherten Plan.</p><div class="save-choice-stack"><button id="backSavePlan" class="primary">Plan speichern</button><button id="discardPlanChanges" class="secondary danger">Plan verwerfen</button><button id="stayInPlan" class="secondary">Weiter bearbeiten</button></div>`);
+  $('discardPlanChanges').onclick=()=>{closeSheet({all:true});editorDirty=false;closePage()};$('stayInPlan').onclick=()=>closeSheet({all:true});$('backSavePlan').onclick=()=>{closeSheet({all:true});if(saveCurrentPlan()){editorDirty=false;closePage();renderPlans()}}
+ };
+ if($('liveBackBtn'))$('liveBackBtn').onclick=()=>leaveLiveToTraining();
 
+ if($('planSaveBtn'))$('planSaveBtn').onclick=()=>{
+  if(currentPlan?._editingSourceId){if(!editorHasChanges()){closePage();showTab('plans');renderPlans();return}askExistingPlanSaveOrDiscard({toPlans:true});return}
+  if(!editorHasChanges()){closePage();showTab('plans');return}
+  openSheet('Plan wirklich speichern?',`<p class="muted">Möchtest du diesen Trainingsplan speichern?</p><div class="grid2"><button id="cancelPlanSave" class="secondary">Abbrechen</button><button id="confirmPlanSave" class="primary">Speichern</button></div>`);
+  $('cancelPlanSave').onclick=()=>closeSheet({all:true});$('confirmPlanSave').onclick=()=>{if(saveCurrentPlan()){closeSheet({all:true});closePage();showTab('plans');renderPlans()}}
+ };
+
+ // Rebind current editor/list if visible after overriding handlers.
+ if(currentPlan&&!$('planEditorPage')?.classList.contains('hidden'))renderEditorExercises();
+ if(activeWorkout&&!$('livePage')?.classList.contains('hidden'))renderLive();
 })();
 
 /* Training-method configuration and pyramid rules */
@@ -235,11 +246,18 @@ const __rt=window.__rt={
  // Preview mirrors the same connected-card hierarchy and exercise names open the execution card.
 
  function askRestart(p){pendingStartPlan=p;openSheet('Training erneut starten?',`<p class="muted" style="margin:0 0 16px">„${esc(p.name)}“ erneut starten?</p><button id="reallyRestartPlan" class="primary" style="width:100%">Training erneut starten</button>`);$('reallyRestartPlan').onclick=()=>{closeSheet({all:true});startWorkout(p)}}
+ window.openSummary=function(w){baseOpenSummary(w)};
 
  // Legacy time exercises that visually default to 1:00 now actually carry 60 s as their selected value.
  const oldNormPlanEx=window.normPlanEx;window.normPlanEx=function(e){const x=oldNormPlanEx(e);if(x.measureMode==='time'&&!Number(x.timeSeconds))x.timeSeconds=60;if(x.setTechnique==='pyramid')x.measureMode='reps';return x};
 
  if(currentPlan&&!$('planEditorPage')?.classList.contains('hidden'))renderEditorExercises();
+ if(activeWorkout&&!$('livePage')?.classList.contains('hidden'))renderLive();
+})();
+
+/* Exercise detail navigation from live workout */
+(function(){
+ const baseRenderLive=window.renderLive;
  if(activeWorkout&&!$('livePage')?.classList.contains('hidden'))renderLive();
 })();
 
@@ -269,6 +287,8 @@ const __rt=window.__rt={
  /* Pause selection must survive every redraw of the unified add/edit flow. */
 /* Remove generic coaching recommendation from live cards.
     Only previous actually completed values may appear grey as placeholders. */
+ const baseRenderLiveSingleCard=window.renderLiveSingleCard;
+
  /* Connected-method controls are owned by app-core.js; no runtime replacement. */
 
  /* A grey prior value becomes real only when the user rates/completes the set;
@@ -283,7 +303,21 @@ const __rt=window.__rt={
    section.innerHTML=`<h3>Darstellung</h3><div class="settings-card"><div class="settings-row" style="display:block"><div><strong>Hell / Dunkel</strong></div><div class="theme-choice-row">${[["system","System"],["light","Hell"],["dark","Dunkel"]].map(([v,l])=>`<button class="theme-choice ${themeModeV48()===v?"active":""}" data-theme-v48="${v}">${l}</button>`).join("")}</div></div></div>`;
    const training=[...body.querySelectorAll(".settings-section")].find(x=>x.querySelector("h3")?.textContent==="Training");
    if(training)body.insertBefore(section,training);else body.appendChild(section);
-   section.querySelectorAll("[data-theme-v48]").forEach(b=>b.onclick=()=>{localStorage.setItem(THEME_KEY_V48,b.dataset.themeV48);applyThemeV48(b.dataset.themeV48);section.querySelectorAll("[data-theme-v48]").forEach(x=>x.classList.toggle("active",x===b))})
+   section.querySelectorAll("[data-theme-v48]").forEach(b=>b.onclick=()=>{localStorage.setItem(THEME_KEY_V48,b.dataset.themeV48);applyThemeV48(b.dataset.themeV48);section.querySelectorAll("[data-theme-v48]").forEach(x=>x.classList.toggle("active",x===b))});
+   const api=window.rethinkRemindersV32;
+   if(api&&!$("reminderSettingsV32")){
+     const r=api.get(),rem=document.createElement("div");rem.className="settings-section";rem.id="reminderSettingsV32";
+     rem.innerHTML=`<h3>Erinnerungen</h3><div class="settings-card">
+       <div class="settings-row"><div><strong>Trinken</strong><small>Erinnerung zur gewählten Uhrzeit</small></div><div class="row"><input id="remDrinkTime" type="time" class="field" value="${r.drinkTime||'10:00'}" style="width:105px"><input id="remDrinkOn" type="checkbox" ${r.drink?'checked':''}></div></div>
+       <div class="settings-row"><div><strong>Ernährung</strong><small>Erinnerung zur gewählten Uhrzeit</small></div><div class="row"><input id="remFoodTime" type="time" class="field" value="${r.foodTime||'12:00'}" style="width:105px"><input id="remFoodOn" type="checkbox" ${r.food?'checked':''}></div></div>
+       <div class="settings-row"><div><strong>Mitteilungen</strong><small>Browser-Berechtigung für Erinnerungen</small></div><button id="remPermission" class="secondary compact-profile-edit">Erlauben</button></div>
+     </div>`;
+     const data=[...body.querySelectorAll(".settings-section")].find(x=>x.querySelector("h3")?.textContent==="Daten & App");
+     if(data)body.insertBefore(rem,data);else body.appendChild(rem);
+     const commit=()=>api.save({drink:$("remDrinkOn").checked,drinkTime:$("remDrinkTime").value||"10:00",food:$("remFoodOn").checked,foodTime:$("remFoodTime").value||"12:00"});
+     ["remDrinkOn","remDrinkTime","remFoodOn","remFoodTime"].forEach(id=>$(id).onchange=commit);
+     $("remPermission").onclick=()=>api.request()
+   }
  };
 
  if(activeWorkout&&!$("livePage")?.classList.contains("hidden"))renderLive();
@@ -473,10 +507,7 @@ const __rt=window.__rt={
    document.querySelectorAll("[data-meal-del]").forEach(b=>b.onclick=()=>{if(confirm("Mahlzeit wirklich löschen?")){nutrition.meals=nutrition.meals.filter(x=>String(x.id)!==String(b.dataset.mealDel));saveAll();renderProfile()}})
  }
 
- window.__profileEnhancers=window.__profileEnhancers||[];
-const __profileEnhancers=window.__profileEnhancers;
-window.runProfileEnhancers=function(...args){for(const fn of __profileEnhancers){try{fn(undefined,...args)}catch(err){console.error("profile enhancer",err)}}};
-__profileEnhancers.push(function(__result,...__args){
+ __rt.profile.post.push(function(__result,...__args){
 ensureNutritionV52();
    renderMyFoodsV52();
    if($("addFoodTodayBtn"))$("addFoodTodayBtn").onclick=()=>openFoodSearch("");
@@ -522,7 +553,7 @@ ensureNutritionV52();
    const inp=$("editDrinkAmountV53");requestAnimationFrame(()=>{inp.focus();inp.select()});
    $("saveDrinkAmountV53").onclick=()=>{x.size=Math.max(1,Number(String(inp.value).replace(",","."))||1);saveHydrationLog(log);recalcFoodTotals();saveAll();closeSheet({all:true});renderProfile()}
  }
- __profileEnhancers.push(function(__result,...__args){
+ __rt.profile.post.push(function(__result,...__args){
 renderProfileProgress();
    document.querySelectorAll("[data-edit-food-entry]").forEach(row=>row.onclick=e=>{if(e.target.closest("[data-food-del]"))return;editFoodEntryV53(row.dataset.editFoodEntry)});
    document.querySelectorAll("[data-edit-drink-entry]").forEach(row=>row.onclick=e=>{if(e.target.closest("[data-hydration-del]"))return;editDrinkEntryV53(row.dataset.editDrinkEntry)});
@@ -564,7 +595,13 @@ renderProfileProgress();
  window.hydrationStreakV56=()=>streakV56("hydration");
  window.nutritionStreakV56=()=>streakV56("nutrition");
 
-
+ __rt.profile.post.push(function(__result,...__args){
+const hs=hydrationStreakV56(),ns=nutritionStreakV56();
+   const hb=$("hydrationStreakBadge"),nb=$("nutritionStreakBadge");
+   if(hb){hb.querySelector("strong").textContent=hs;hb.classList.toggle("active",hs>0)}
+   if(nb){nb.querySelector("strong").textContent=ns;nb.classList.toggle("active",ns>0)}
+   if(typeof renderProfileProgress==="function")renderProfileProgress()
+});
 
 
 })();
@@ -604,29 +641,6 @@ try{renderProfile();renderPlans();if(activeWorkout&&!$("livePage").classList.con
 
 /* v64: full catalog for partner exercises, compact progress, method-colour live focus */
 (function(){
-  function startCompactPartnerConfig(name){
-    const f=planAddFlow;if(!f?.group)return;
-    const master=f.drafts?.[0];
-    const base=findExercise(name);if(!base)return toast("Übung nicht gefunden");
-    const already=new Set((f.drafts||[]).map(x=>String(x.name)));
-    if(already.has(String(base.name)))return toast("Übung bereits gewählt");
-    const target=Number(f.group.target)||2;
-    const draft=normPlanEx({...base,
-      sets:Number(master?.sets)||3,
-      rest:Number(master?.rest)||Number(localStorage.getItem(REST_DEFAULT_KEY)||90),
-      setTechnique:f.group.method,
-      techniqueGroup:f.group.id,
-      methodData:clone(master?.methodData||{})
-    });
-    if(f.group.method==="giant"){draft.methodData=draft.methodData||{};draft.methodData.giantCount=target}
-    draft._draftOrder=(f.drafts||[]).length;
-    draft.groupPosition=draft._draftOrder;
-    f.current=draft;
-    f.step="config";
-    f.from="partnerPicker";
-    renderPlanAddConfig()
-  }
-
   function partnerCatalogRowsV64(rows){
     return rows.map(x=>`<div class="exercise-card picker-quick-card">
       <button class="picker-info" type="button" data-v64-partner-info="${esc(x.name)}">
@@ -676,6 +690,7 @@ try{renderProfile();renderPlans();if(activeWorkout&&!$("livePage").classList.con
     return !!e&&(e.liveSets||[]).length>0&&(e.liveSets||[]).every(s=>s.completed)
   }
   /* Live card rendering is owned by app-core.js. Legacy v64 renderer overrides removed. */
+  const renderLiveV64BeforeActions=renderLive;
 
 
   /* Exact compact profile cards: no premise/explanation text. */
@@ -735,6 +750,11 @@ try{renderProfile();renderPlans();if(activeWorkout&&!$("livePage").classList.con
  if($('addWaterBtn'))$('addWaterBtn').onclick=openQuickDrinkEntry;
 
  /* Rebind saved meals to the new fraction picker after every profile render. */
+ __rt.profile.post.push(function(__result,...__args){
+document.querySelectorAll('[data-meal-log]').forEach(b=>b.onclick=()=>{const m=(nutrition.meals||[]).find(x=>String(x.id)===String(b.dataset.mealLog));if(m)openMealLogV68(m)});
+   if($('addFoodTodayBtn'))$('addFoodTodayBtn').onclick=()=>openFoodSearch('')
+});
+
  // Annual automatic cleanup was removed. User data is deleted only via explicit data-management actions.
 })();
 
@@ -742,7 +762,34 @@ try{renderProfile();renderPlans();if(activeWorkout&&!$("livePage").classList.con
 /* v69 hardening */
 (function(){
 
- /* Giant/partner target flow is owned by the canonical plan-add functions above. */
+ function v69MoveRestBar(){
+   const bar=$('restBar');
+   if(bar&&bar.parentElement!==document.body)document.body.appendChild(bar)
+ }
+ v69MoveRestBar();
+ const startRestBeforeV69=startRest;
+ startRest=function(sec,restored=false){v69MoveRestBar();return startRestBeforeV69(sec,restored)};
+
+ /* Giant target remains authoritative through the entire partner flow. */
+ const confirmBeforeV69=confirmPlanAddDraft;
+ confirmPlanAddDraft=function(){
+   const e=planAddFlow?.current;
+   if(e?.setTechnique==='giant'){
+     e.methodData=e.methodData||{};
+     e.methodData.giantCount=Math.min(6,Math.max(3,Number($('paGiantCount')?.value||e.methodData.giantCount||planAddFlow.group?.target||3)));
+     if(planAddFlow.group){planAddFlow.group.method='giant';planAddFlow.group.target=e.methodData.giantCount}
+   }
+   return confirmBeforeV69()
+ };
+ const advanceBeforeV69=advancePartnerDraftFlow;
+ advancePartnerDraftFlow=function(){
+   const f=planAddFlow;
+   if(f?.group?.method==='giant'){
+     const target=Math.min(6,Math.max(3,Number(f.drafts?.[0]?.methodData?.giantCount||f.group.target||3)));
+     f.group.target=target
+   }
+   return advanceBeforeV69()
+ };
 
  /* Exact read-only preview: use the dedicated preview renderer, not the live five-column controls. */
 
@@ -857,6 +904,7 @@ try{renderProfile();renderPlans();if(activeWorkout&&!$("livePage").classList.con
    }
    return Math.max(0,(activeWorkout.exercises||[]).length-1)
  }
+ const renderBeforeV69Active=renderLive;
 })();
 
 
@@ -1330,11 +1378,11 @@ addPreviousDotsToSinglesV31();return result
  function savePrefsV31(){write(PREF_KEY,prefs)}
  function nV31(v){const x=Number(String(v??"").trim().replace(",","."));return Number.isFinite(x)?x:null}
  function roundV31(v,d=1){const p=10**d;return Math.round(v*p)/p}
- function weightLabelRuntimeV31(){return prefs.weightUnit==="lb"?"LB":"KG"}function lengthLabelRuntimeV31(){return prefs.measurementUnit==="in"?"IN":"CM"}function distanceLabelV31(){return prefs.distanceUnit==="mi"?"MI":"KM"}
- function weightDisplayRuntimeV31(kg){const x=nV31(kg);return x==null?"":roundV31(prefs.weightUnit==="lb"?x*2.2046226218:x,1)}
- function weightStorageRuntimeV31(v){const x=nV31(v);return x==null?"":roundV31(prefs.weightUnit==="lb"?x/2.2046226218:x,3)}
- function lengthDisplayRuntimeV31(cm){const x=nV31(cm);return x==null?"":roundV31(prefs.measurementUnit==="in"?x/2.54:x,1)}
- function lengthStorageRuntimeV31(v){const x=nV31(v);return x==null?"":roundV31(prefs.measurementUnit==="in"?x*2.54:x,2)}
+ function weightLabelV31(){return prefs.weightUnit==="lb"?"LB":"KG"}function lengthLabelV31(){return prefs.measurementUnit==="in"?"IN":"CM"}function distanceLabelV31(){return prefs.distanceUnit==="mi"?"MI":"KM"}
+ function weightDisplayV31(kg){const x=nV31(kg);return x==null?"":roundV31(prefs.weightUnit==="lb"?x*2.2046226218:x,1)}
+ function weightStorageV31(v){const x=nV31(v);return x==null?"":roundV31(prefs.weightUnit==="lb"?x/2.2046226218:x,3)}
+ function lengthDisplayV31(cm){const x=nV31(cm);return x==null?"":roundV31(prefs.measurementUnit==="in"?x/2.54:x,1)}
+ function lengthStorageV31(v){const x=nV31(v);return x==null?"":roundV31(prefs.measurementUnit==="in"?x*2.54:x,2)}
  function distanceDisplayV31(km){const x=nV31(km);return x==null?"":roundV31(prefs.distanceUnit==="mi"?x*0.6213711922:x,2)}
  function distanceStorageV31(v){const x=nV31(v);return x==null?"":roundV31(prefs.distanceUnit==="mi"?x/0.6213711922:x,3)}
  function weekStartOfV31(date=new Date(),mode=prefs.weekStart){const d=new Date(date);d.setHours(12,0,0,0);const off=mode==="sunday"?d.getDay():(d.getDay()+6)%7;d.setDate(d.getDate()-off);return d}
@@ -1349,29 +1397,30 @@ addPreviousDotsToSinglesV31();return result
 const x=__result;
 updateWeekLabelsV31();return x
 });
- function unitizeSheetV31(){const body=$("sheetBody");if(!body)return;const walker=document.createTreeWalker(body,NodeFilter.SHOW_TEXT);let node;while((node=walker.nextNode())){const t=node.nodeValue;if(t&&t.trim()==="KG")node.nodeValue=t.replace(/KG/g,weightLabelRuntimeV31())}if((body.querySelector(".method-tabs")||body.querySelector("[id*='MethodTabs']"))&&!body.querySelector(".unit-context-chip")){const chip=document.createElement("div");chip.className="unit-context-chip";chip.textContent=`Gewicht ${weightLabelRuntimeV31()}`;body.prepend(chip)}}
+ function unitizeSheetV31(){const body=$("sheetBody");if(!body)return;const walker=document.createTreeWalker(body,NodeFilter.SHOW_TEXT);let node;while((node=walker.nextNode())){const t=node.nodeValue;if(t&&t.trim()==="KG")node.nodeValue=t.replace(/KG/g,weightLabelV31())}if((body.querySelector(".method-tabs")||body.querySelector("[id*='MethodTabs']"))&&!body.querySelector(".unit-context-chip")){const chip=document.createElement("div");chip.className="unit-context-chip";chip.textContent=`Gewicht ${weightLabelV31()}`;body.prepend(chip)}}
  const renderSheetBeforeUnitsV31=renderSheetState;renderSheetState=function(state){const x=renderSheetBeforeUnitsV31(state);requestAnimationFrame(unitizeSheetV31);return x};
  function weightFieldInfoV31(inp){const raw=inp?.dataset?.input;if(!raw)return null;const [ei,si,k,gi]=raw.split("|");return["weight","sw","gw"].includes(k)?{ei:Number(ei),si:Number(si),k,gi:Number(gi)}:null}
  function canonicalWeightForFieldV31(i){const e=activeWorkout?.exercises?.[i.ei],s=e?.liveSets?.[i.si];if(!s)return"";return i.k==="weight"?(s.weight??""):(s.segments?.[i.gi]?.weight??"")}
  function suggestedWeightForFieldV31(i){const e=activeWorkout?.exercises?.[i.ei],s=e?.liveSets?.[i.si];if(!s)return"";return i.k==="weight"?(s._suggested?.weight??""):(s.segments?.[i.gi]?._suggested?.weight??"")}
- function applyLiveUnitsV31(){document.querySelectorAll("#liveBody .set-head span,#liveBody .time-head span,#liveBody .advanced-head span,#liveBody .combined-value-head span").forEach(el=>{if(el.textContent.trim()==="KG")el.textContent=weightLabelRuntimeV31()});document.querySelectorAll("#liveBody [data-input]").forEach(inp=>{const info=weightFieldInfoV31(inp);if(!info)return;const c=canonicalWeightForFieldV31(info),s=suggestedWeightForFieldV31(info);inp.value=String(c).trim()===""?"":String(weightDisplayRuntimeV31(c));inp.placeholder=String(s).trim()===""?weightLabelRuntimeV31():String(weightDisplayRuntimeV31(s))})}
- const updateInputBeforeUnitsV31=updateInput;updateInput=function(inp){const info=weightFieldInfoV31(inp);if(!info||prefs.weightUnit==="kg")return updateInputBeforeUnitsV31(inp);const shown=inp.value,converted=weightStorageRuntimeV31(shown);inp.value=converted===""?"":String(converted);const result=updateInputBeforeUnitsV31(inp);if(inp.isConnected)inp.value=shown;return result};
+ function applyLiveUnitsV31(){document.querySelectorAll("#liveBody .set-head span,#liveBody .time-head span,#liveBody .advanced-head span,#liveBody .combined-value-head span").forEach(el=>{if(el.textContent.trim()==="KG")el.textContent=weightLabelV31()});document.querySelectorAll("#liveBody [data-input]").forEach(inp=>{const info=weightFieldInfoV31(inp);if(!info)return;const c=canonicalWeightForFieldV31(info),s=suggestedWeightForFieldV31(info);inp.value=String(c).trim()===""?"":String(weightDisplayV31(c));inp.placeholder=String(s).trim()===""?weightLabelV31():String(weightDisplayV31(s))})}
+ const updateInputBeforeUnitsV31=updateInput;updateInput=function(inp){const info=weightFieldInfoV31(inp);if(!info||prefs.weightUnit==="kg")return updateInputBeforeUnitsV31(inp);const shown=inp.value,converted=weightStorageV31(shown);inp.value=converted===""?"":String(converted);const result=updateInputBeforeUnitsV31(inp);if(inp.isConnected)inp.value=shown;return result};
  __rt.live.post.push(function(__result,...__args){
 const x=__result;
 applyLiveUnitsV31();return x
 });
- function unitizePreviewV31(){document.querySelectorAll("#previewBody .preview-value,#previewBody .set-head span,#previewBody .time-head span,#previewBody .advanced-head span,#previewBody .combined-value-head span").forEach(el=>{if(el.textContent.trim()==="KG")el.textContent=weightLabelRuntimeV31()})}
- function formatMeasurementValuesV31(m){return `${m.bodyfat?`<span>Körperfett ${m.bodyfat}%</span>`:""}${m.waist?`<span>Taille ${lengthDisplayRuntimeV31(m.waist)} ${lengthLabelRuntimeV31().toLowerCase()}</span>`:""}${m.chest?`<span>Brust ${lengthDisplayRuntimeV31(m.chest)} ${lengthLabelRuntimeV31().toLowerCase()}</span>`:""}${m.hip?`<span>Hüfte ${lengthDisplayRuntimeV31(m.hip)} ${lengthLabelRuntimeV31().toLowerCase()}</span>`:""}`}
- function patchProfileUnitsV31(){const latest=measurements.slice().reverse().find(m=>Number(m.weight)>0),cw=Number(latest?.weight||profile.weight||0);if($("profileSummary"))$("profileSummary").textContent=[profile.age?profile.age+" J.":"",profile.height?`${lengthDisplayRuntimeV31(profile.height)} ${lengthLabelRuntimeV31().toLowerCase()}`:"",cw?`${weightDisplayRuntimeV31(cw)} ${weightLabelRuntimeV31().toLowerCase()}`:""].filter(Boolean).join(" · ")||"Noch nicht eingerichtet";if($("profileGoalSummary")){const base=profile.goal==="cut"?"Ziel: Gewicht reduzieren":profile.goal==="gain"?"Ziel: Muskelaufbau":profile.goal==="maintain"?"Ziel: Gewicht halten":"Persönliche Werte und Ziele";$("profileGoalSummary").innerHTML=`<span>${base}</span>${profile.targetWeight?`<span class="target-weight-line-profile">Wunschgewicht ${weightDisplayRuntimeV31(profile.targetWeight)} ${weightLabelRuntimeV31().toLowerCase()}</span>`:""}`}document.querySelectorAll("[data-measurement-open]").forEach(btn=>{const i=Number(btn.dataset.measurementOpen),m=measurements[i];if(!m)return;const strong=btn.querySelector("strong");if(strong)strong.textContent=m.weight?`${weightDisplayRuntimeV31(m.weight)} ${weightLabelRuntimeV31().toLowerCase()}`:"Messung";const vals=btn.querySelector(".measurement-values");if(vals)vals.innerHTML=formatMeasurementValuesV31(m);btn.onclick=()=>openMeasurementRecord(i)})}
- __profileEnhancers.push(function(__result,...__args){
+ function unitizePreviewV31(){document.querySelectorAll("#previewBody .preview-value,#previewBody .set-head span,#previewBody .time-head span,#previewBody .advanced-head span,#previewBody .combined-value-head span").forEach(el=>{if(el.textContent.trim()==="KG")el.textContent=weightLabelV31()})}
+ function formatMeasurementValuesV31(m){return `${m.bodyfat?`<span>Körperfett ${m.bodyfat}%</span>`:""}${m.waist?`<span>Taille ${lengthDisplayV31(m.waist)} ${lengthLabelV31().toLowerCase()}</span>`:""}${m.chest?`<span>Brust ${lengthDisplayV31(m.chest)} ${lengthLabelV31().toLowerCase()}</span>`:""}${m.hip?`<span>Hüfte ${lengthDisplayV31(m.hip)} ${lengthLabelV31().toLowerCase()}</span>`:""}`}
+ function patchProfileUnitsV31(){const latest=measurements.slice().reverse().find(m=>Number(m.weight)>0),cw=Number(latest?.weight||profile.weight||0);if($("profileSummary"))$("profileSummary").textContent=[profile.age?profile.age+" J.":"",profile.height?`${lengthDisplayV31(profile.height)} ${lengthLabelV31().toLowerCase()}`:"",cw?`${weightDisplayV31(cw)} ${weightLabelV31().toLowerCase()}`:""].filter(Boolean).join(" · ")||"Noch nicht eingerichtet";if($("profileGoalSummary")){const base=profile.goal==="cut"?"Ziel: Gewicht reduzieren":profile.goal==="gain"?"Ziel: Muskelaufbau":profile.goal==="maintain"?"Ziel: Gewicht halten":"Persönliche Werte und Ziele";$("profileGoalSummary").innerHTML=`<span>${base}</span>${profile.targetWeight?`<span class="target-weight-line-profile">Wunschgewicht ${weightDisplayV31(profile.targetWeight)} ${weightLabelV31().toLowerCase()}</span>`:""}`}document.querySelectorAll("[data-measurement-open]").forEach(btn=>{const i=Number(btn.dataset.measurementOpen),m=measurements[i];if(!m)return;const strong=btn.querySelector("strong");if(strong)strong.textContent=m.weight?`${weightDisplayV31(m.weight)} ${weightLabelV31().toLowerCase()}`:"Messung";const vals=btn.querySelector(".measurement-values");if(vals)vals.innerHTML=formatMeasurementValuesV31(m);btn.onclick=()=>openMeasurementRecord(i)})}
+ __rt.profile.post.push(function(__result,...__args){
 const x=__result;
 patchProfileUnitsV31();requestAnimationFrame(()=>{patchProfileUnitsV31();renderProfileProgress()});return x
 });
- openMeasurementRecord=function(i){const m=measurements[i];if(!m)return;openSheet("Messung",`<div class="card"><strong>${m.weight?`${weightDisplayRuntimeV31(m.weight)} ${weightLabelRuntimeV31().toLowerCase()} · ${activityLabel(m.activity||profile.activity||1.55)}`:"–"}</strong><div class="small">${new Date(m.date||Date.now()).toLocaleString("de-DE")}</div><div class="measurement-values" style="margin-top:12px">${formatMeasurementValuesV31(m)}</div></div><button id="deleteMeasurementRecord" class="secondary danger" style="width:100%;margin-top:12px">Messung löschen</button>`);$("deleteMeasurementRecord").onclick=()=>{if(confirm("Diese Messung wirklich löschen?")){measurements.splice(i,1);saveAll();closeSheet({all:true});renderProfile();toast("Messung gelöscht")}}};
- openMeasurementData=function(){openSheet("Messungen",`${measurements.slice().reverse().map((m,ri)=>{const i=measurements.length-1-ri;return`<div class="card" data-settings-measure-open="${i}"><div class="space"><div><strong>${m.weight?weightDisplayRuntimeV31(m.weight):"–"} ${weightLabelRuntimeV31().toLowerCase()} · ${activityLabel(m.activity||profile.activity||1.55)}</strong><div class="small">${new Date(m.date||Date.now()).toLocaleString("de-DE")}</div></div><span>›</span></div></div>`}).join("")||'<div class="card small">Noch keine Messungen.</div>'}`);document.querySelectorAll("[data-settings-measure-open]").forEach(b=>b.onclick=()=>openMeasurementRecord(Number(b.dataset.settingsMeasureOpen)))};
- function openMeasurementEntryV31(){openSheet("Messung hinzufügen",`<div class="grid2"><div class="form-field"><label>GEWICHT ${weightLabelRuntimeV31()}</label><input id="measureWeightUnits" class="field" inputmode="decimal"></div><div class="form-field"><label>KÖRPERFETT IN %</label><input id="measureBodyfatUnits" class="field" inputmode="decimal"></div></div><div class="grid2"><div class="form-field"><label>TAILLE ${lengthLabelRuntimeV31()}</label><input id="measureWaistUnits" class="field" inputmode="decimal"></div><div class="form-field"><label>BRUST ${lengthLabelRuntimeV31()}</label><input id="measureChestUnits" class="field" inputmode="decimal"></div></div><div class="grid2"><div class="form-field"><label>HÜFTE ${lengthLabelRuntimeV31()}</label><input id="measureHipUnits" class="field" inputmode="decimal"></div><div class="form-field"><label>AKTIVITÄT</label><select id="measureActivityUnits" class="field"><option value="1.2" ${String(profile.activity)==="1.2"?"selected":""}>Wenig aktiv</option><option value="1.375" ${String(profile.activity)==="1.375"?"selected":""}>Leicht aktiv</option><option value="1.55" ${!profile.activity||String(profile.activity)==="1.55"?"selected":""}>Moderat aktiv</option><option value="1.725" ${String(profile.activity)==="1.725"?"selected":""}>Sehr aktiv</option><option value="1.9" ${String(profile.activity)==="1.9"?"selected":""}>Extrem aktiv</option></select></div></div><button id="measureSaveUnits" class="primary" style="width:100%">Speichern</button>`);$("measureSaveUnits").onclick=()=>{const weight=weightStorageRuntimeV31($("measureWeightUnits").value);if(!weight||weight<20||weight>400){$("measureWeightUnits").focus();return alert("Bitte Gewicht eintragen.")}const md=profileDayOffset===0?Date.now():profileDate().setHours(12,0,0,0),m={date:md,weight,bodyfat:$("measureBodyfatUnits").value,waist:lengthStorageRuntimeV31($("measureWaistUnits").value),chest:lengthStorageRuntimeV31($("measureChestUnits").value),hip:lengthStorageRuntimeV31($("measureHipUnits").value),activity:$("measureActivityUnits").value};measurements.push(m);measurements.sort((a,b)=>Number(a.date)-Number(b.date));profile.weight=weight;profile.activity=$("measureActivityUnits").value;saveAll();closeSheet({all:true});renderProfile()}}openMeasurementEntry=openMeasurementEntryV31;if($("addMeasurementBtn"))$("addMeasurementBtn").onclick=openMeasurementEntryV31;
+ openMeasurementRecord=function(i){const m=measurements[i];if(!m)return;openSheet("Messung",`<div class="card"><strong>${m.weight?`${weightDisplayV31(m.weight)} ${weightLabelV31().toLowerCase()} · ${activityLabel(m.activity||profile.activity||1.55)}`:"–"}</strong><div class="small">${new Date(m.date||Date.now()).toLocaleString("de-DE")}</div><div class="measurement-values" style="margin-top:12px">${formatMeasurementValuesV31(m)}</div></div><button id="deleteMeasurementRecord" class="secondary danger" style="width:100%;margin-top:12px">Messung löschen</button>`);$("deleteMeasurementRecord").onclick=()=>{if(confirm("Diese Messung wirklich löschen?")){measurements.splice(i,1);saveAll();closeSheet({all:true});renderProfile();toast("Messung gelöscht")}}};
+ openMeasurementData=function(){openSheet("Messungen",`${measurements.slice().reverse().map((m,ri)=>{const i=measurements.length-1-ri;return`<div class="card" data-settings-measure-open="${i}"><div class="space"><div><strong>${m.weight?weightDisplayV31(m.weight):"–"} ${weightLabelV31().toLowerCase()} · ${activityLabel(m.activity||profile.activity||1.55)}</strong><div class="small">${new Date(m.date||Date.now()).toLocaleString("de-DE")}</div></div><span>›</span></div></div>`}).join("")||'<div class="card small">Noch keine Messungen.</div>'}`);document.querySelectorAll("[data-settings-measure-open]").forEach(b=>b.onclick=()=>openMeasurementRecord(Number(b.dataset.settingsMeasureOpen)))};
+ function openMeasurementEntryV31(){openSheet("Messung hinzufügen",`<div class="grid2"><div class="form-field"><label>GEWICHT ${weightLabelV31()}</label><input id="measureWeightUnits" class="field" inputmode="decimal"></div><div class="form-field"><label>KÖRPERFETT IN %</label><input id="measureBodyfatUnits" class="field" inputmode="decimal"></div></div><div class="grid2"><div class="form-field"><label>TAILLE ${lengthLabelV31()}</label><input id="measureWaistUnits" class="field" inputmode="decimal"></div><div class="form-field"><label>BRUST ${lengthLabelV31()}</label><input id="measureChestUnits" class="field" inputmode="decimal"></div></div><div class="grid2"><div class="form-field"><label>HÜFTE ${lengthLabelV31()}</label><input id="measureHipUnits" class="field" inputmode="decimal"></div><div class="form-field"><label>AKTIVITÄT</label><select id="measureActivityUnits" class="field"><option value="1.2" ${String(profile.activity)==="1.2"?"selected":""}>Wenig aktiv</option><option value="1.375" ${String(profile.activity)==="1.375"?"selected":""}>Leicht aktiv</option><option value="1.55" ${!profile.activity||String(profile.activity)==="1.55"?"selected":""}>Moderat aktiv</option><option value="1.725" ${String(profile.activity)==="1.725"?"selected":""}>Sehr aktiv</option><option value="1.9" ${String(profile.activity)==="1.9"?"selected":""}>Extrem aktiv</option></select></div></div><button id="measureSaveUnits" class="primary" style="width:100%">Speichern</button>`);$("measureSaveUnits").onclick=()=>{const weight=weightStorageV31($("measureWeightUnits").value);if(!weight||weight<20||weight>400){$("measureWeightUnits").focus();return alert("Bitte Gewicht eintragen.")}const md=profileDayOffset===0?Date.now():profileDate().setHours(12,0,0,0),m={date:md,weight,bodyfat:$("measureBodyfatUnits").value,waist:lengthStorageV31($("measureWaistUnits").value),chest:lengthStorageV31($("measureChestUnits").value),hip:lengthStorageV31($("measureHipUnits").value),activity:$("measureActivityUnits").value};measurements.push(m);measurements.sort((a,b)=>Number(a.date)-Number(b.date));profile.weight=weight;profile.activity=$("measureActivityUnits").value;saveAll();closeSheet({all:true});renderProfile()}}openMeasurementEntry=openMeasurementEntryV31;if($("addMeasurementBtn"))$("addMeasurementBtn").onclick=openMeasurementEntryV31;
  
- window.rethinkPrefsV31={get:()=>({...prefs}),weightLabel:weightLabelRuntimeV31,lengthLabel:lengthLabelRuntimeV31,distanceLabel:distanceLabelV31,weightDisplay:weightDisplayRuntimeV31,weightStorage:weightStorageRuntimeV31,lengthDisplay:lengthDisplayRuntimeV31,lengthStorage:lengthStorageRuntimeV31,distanceDisplay:distanceDisplayV31,distanceStorage:distanceStorageV31,weekStartOf:weekStartOfV31,weekDayLabels:weekDayLabelsV31};
+ const openSettingsBeforePrefsV31=openSettingsPage;openSettingsPage=function(){openSettingsBeforePrefsV31();requestAnimationFrame(()=>{const body=$("settingsBody");if(!body||$("unitSettingsV31"))return;const sec=document.createElement("div");sec.className="settings-section";sec.id="unitSettingsV31";sec.innerHTML=`<h3>Einheiten & Ansicht</h3><div class="settings-card"><div class="settings-row"><div><strong>Gewicht</strong><small>Training, Verlauf und Körpergewicht</small></div><select id="prefWeightUnit" class="field settings-unit-select"><option value="kg" ${prefs.weightUnit==="kg"?"selected":""}>kg</option><option value="lb" ${prefs.weightUnit==="lb"?"selected":""}>lb</option></select></div><div class="settings-row"><div><strong>Distanz</strong><small>Cardio-/Distanzangaben</small></div><select id="prefDistanceUnit" class="field settings-unit-select"><option value="km" ${prefs.distanceUnit==="km"?"selected":""}>km</option><option value="mi" ${prefs.distanceUnit==="mi"?"selected":""}>mi</option></select></div><div class="settings-row"><div><strong>Messungen</strong><small>Größe, Taille, Brust und Hüfte</small></div><select id="prefMeasurementUnit" class="field settings-unit-select"><option value="cm" ${prefs.measurementUnit==="cm"?"selected":""}>cm</option><option value="in" ${prefs.measurementUnit==="in"?"selected":""}>in</option></select></div><div class="settings-row"><div><strong>Wochenstart</strong><small>Reihenfolge und Datumsbereich</small></div><select id="prefWeekStart" class="field settings-unit-select"><option value="monday" ${prefs.weekStart==="monday"?"selected":""}>Montag</option><option value="sunday" ${prefs.weekStart==="sunday"?"selected":""}>Sonntag</option></select></div>`;const training=[...body.querySelectorAll(".settings-section")].find(x=>x.querySelector("h3")?.textContent==="Training");if(training)body.insertBefore(sec,training);else body.appendChild(sec);$("prefWeightUnit").onchange=()=>{prefs.weightUnit=$("prefWeightUnit").value;savePrefsV31();if(activeWorkout)renderLive();renderProfile();unitizeSheetV31()};$("prefDistanceUnit").onchange=()=>{prefs.distanceUnit=$("prefDistanceUnit").value;savePrefsV31();unitizeSheetV31()};$("prefMeasurementUnit").onchange=()=>{prefs.measurementUnit=$("prefMeasurementUnit").value;savePrefsV31();renderProfile()};$("prefWeekStart").onchange=()=>{const old=prefs.weekStart,next=$("prefWeekStart").value;saveCurrentWeekRefs();migrateWeekStorageV31(old,next);prefs.weekStart=next;savePrefsV31();loadWeekOffset(weekOffset);renderProfileProgress()}})};
+ window.rethinkPrefsV31={get:()=>({...prefs}),weightLabel:weightLabelV31,lengthLabel:lengthLabelV31,distanceLabel:distanceLabelV31,weightDisplay:weightDisplayV31,weightStorage:weightStorageV31,lengthDisplay:lengthDisplayV31,lengthStorage:lengthStorageV31,distanceDisplay:distanceDisplayV31,distanceStorage:distanceStorageV31,weekStartOf:weekStartOfV31,weekDayLabels:weekDayLabelsV31};
 })();
 /* Rethink_v3.1 — unit-aware measurement charts */
 (function(){
@@ -1592,10 +1641,12 @@ patchProfileUnitsV31();requestAnimationFrame(()=>{patchProfileUnitsV31();renderP
    return'Versuche dich zu steigern'
  }
  function recommendationTextV31(e){
-   // A recommendation may only be derived from a PREVIOUS completed workout.
-   // Never use sets from the workout currently in progress. All completed sets from
-   // the matching previous exercise are aggregated by the method-specific logic below.
-   const source=lastMatchingExerciseV26(e);
+   const prev=lastMatchingExerciseV26(e);
+   // Recommendations are also useful during the current workout once at least one set was rated.
+   // If a previous matching workout exists it remains the preferred reference; otherwise use
+   // the already rated sets of this workout so the box appears immediately after rating.
+   const currentSets=(e?.liveSets||[]).filter(s=>s?.completed&&(s?.rating||(s?.segments||[]).some(g=>g?.rating)));
+   const source=prev||((currentSets.length)?{x:e,sets:currentSets,current:true}:null);
    if(!source)return'';
    if(/AMRAP/i.test(String(e.reps||'')))return'Versuche dich zu steigern';
    if(e.measureMode==='time')return timeTipV72(e,source);
@@ -1670,7 +1721,7 @@ patchProfileUnitsV31();requestAnimationFrame(()=>{patchProfileUnitsV31();renderP
  function rebindInputsWithoutHighlightV31(){
    document.querySelectorAll("#liveBody [data-input]").forEach(x=>{
      const isTime=x.matches("[data-time-field]");
-     if(isTime){x.setAttribute("inputmode","none");x.removeAttribute("readonly");x.classList.add("time-keypad-input")}
+     if(isTime){x.setAttribute("inputmode","none");x.setAttribute("readonly","readonly");x.classList.add("time-keypad-input")}
      x.oninput=()=>{touchInput(x);updateInput(x)};
      x.onchange=()=>updateInput(x);
      x.onblur=()=>{updateInput(x);setTimeout(()=>{const a=document.activeElement;if(!a||!a.matches("[data-input]"))renderLive()},0)};
@@ -1932,9 +1983,10 @@ bindStrictInputsV31();
 
  // Distance is useful for timed/cardio work only.
  function supportsDistanceV31(e){
- const n=String(e?.name||"").toLowerCase(), c=(e?.categories||e?.types||[]).join(" ").toLowerCase(), t=String(e?.tracking||"").toLowerCase();
- return /distance|distanz|strecke/.test(t)||/run|laufen|laufband|treadmill|row|ruder|skierg|ski erg|bike|rad|ergometer|carry|farmer|suitcase|walk|gehen|sprint/.test(n+" "+c);
-}
+   const def=(typeof findExercise==="function"?findExercise(e?.name):null)||{};
+   const hay=[e?.name,e?.category,...(e?.categories||[]),def?.name,def?.category,...(def?.categories||[]),def?.tracking,e?.tracking].join(" ").toLowerCase();
+   return /distance|distanz|strecke|run|laufen|laufband|treadmill|row|ruder|skierg|ski erg|bike|rad|ergometer|carry|farmer|suitcase|walk|gehen|sprint/.test(hay)
+ }
  function addDistanceFieldsV31(){
    if(!activeWorkout)return;
    document.querySelectorAll("#liveBody [data-time-play]").forEach(play=>{
@@ -1959,7 +2011,7 @@ applyTranslationsV31();return r
 });
 
  // Profile height in imperial is shown as feet + inches; circumferences stay inches.
- __profileEnhancers.push(function(__result,...__args){
+ __rt.profile.post.push(function(__result,...__args){
 const r=__result;
 if(sysPrefs.unitSystem==="imperial"&&$("profileSummary")&&profile.height){
      const latest=measurements.slice().reverse().find(m=>Number(m.weight)>0),w=Number(latest?.weight||profile.weight||0);
@@ -2071,24 +2123,40 @@ if(sysPrefs.unitSystem==="imperial"&&$("profileSummary")&&profile.height){
  observer.observe(document.body,{childList:true,subtree:true});
  applyTranslationsV31();
 
- // System settings extension. app-core owns opening/rendering the settings page;
- // this extension only adds the unit/week/language controls after the core body exists.
- window.rethinkEnhanceSettings=function(){
-   const body=$("settingsBody");if(!body)return;
-   const old=$("unitSettingsV31");if(old)old.remove();
-   let sec=$("systemSettingsV31");if(sec)sec.remove();
-   sec=document.createElement("div");sec.id="systemSettingsV31";sec.className="settings-section";
-   sec.innerHTML=`<h3>Einheiten & Ansicht</h3><div class="settings-card">
-     <div class="settings-row"><div><strong>Einheitensystem</strong><small>kg / km / cm / ml / g oder lb / mi / in / oz / oz-lb</small></div><select id="prefUnitSystem" class="field settings-system-select"><option value="metric" ${sysPrefs.unitSystem==="metric"?"selected":""}>Metrisch</option><option value="imperial" ${sysPrefs.unitSystem==="imperial"?"selected":""}>Imperial</option></select></div>
-     <div class="settings-row"><div><strong>Wochenstart</strong></div><select id="prefWeekStartFinal" class="field settings-system-select"><option value="monday" ${sysPrefs.weekStart==="monday"?"selected":""}>Montag</option><option value="sunday" ${sysPrefs.weekStart==="sunday"?"selected":""}>Sonntag</option></select></div>
-     <div class="settings-row"><div><strong>Sprache</strong><small>Gesamte App-Oberfläche</small></div><select id="prefLanguage" class="field settings-system-select"><option value="de" ${sysPrefs.language!=="en"?"selected":""}>Deutsch</option><option value="en" ${sysPrefs.language==="en"?"selected":""}>English</option></select></div>
-     </div>`;
-   const training=[...body.querySelectorAll(".settings-section")].find(x=>x.querySelector("h3")?.textContent==="Training");
-   if(training)body.insertBefore(sec,training);else body.appendChild(sec);
-   $("prefUnitSystem").onchange=()=>{sysPrefs.unitSystem=$("prefUnitSystem").value;applySystemDerivedV31();renderProfile();if(activeWorkout)renderLive();applyTranslationsV31()};
-   $("prefWeekStartFinal").onchange=()=>{sysPrefs.weekStart=$("prefWeekStartFinal").value;write(PREF_KEY,sysPrefs);const legacy=$("prefWeekStart");if(legacy){legacy.value=sysPrefs.weekStart;legacy.dispatchEvent(new Event("change",{bubbles:true}))}else{renderWeek();renderProfile()}};
-   $("prefLanguage").onchange=()=>{sysPrefs.language=$("prefLanguage").value;write(PREF_KEY,sysPrefs);try{captureTabUiState(currentTab);persistUI({capture:false});saveAll()}catch{}location.reload()};
-   applyTranslationsV31();
+ // Final settings section: system-level units + language, replacing the individual unit selects visually.
+ const openSettingsBeforeSystemV31=openSettingsPage;
+ openSettingsPage=function(){
+   openSettingsBeforeSystemV31();
+   requestAnimationFrame(()=>{
+     const body=$("settingsBody");if(!body)return;
+     const old=$("unitSettingsV31");if(old)old.remove();
+     let sec=$("systemSettingsV31");
+     if(sec)sec.remove();
+     sec=document.createElement("div");sec.id="systemSettingsV31";sec.className="settings-section";
+     sec.innerHTML=`<h3>Einheiten & Ansicht</h3><div class="settings-card">
+       <div class="settings-row"><div><strong>Einheitensystem</strong><small>kg / km / cm / ml / g oder lb / mi / in / oz / oz-lb</small></div><select id="prefUnitSystem" class="field settings-system-select"><option value="metric" ${sysPrefs.unitSystem==="metric"?"selected":""}>Metrisch</option><option value="imperial" ${sysPrefs.unitSystem==="imperial"?"selected":""}>Imperial</option></select></div>
+       <div class="settings-row"><div><strong>Wochenstart</strong></div><select id="prefWeekStartFinal" class="field settings-system-select"><option value="monday" ${sysPrefs.weekStart==="monday"?"selected":""}>Montag</option><option value="sunday" ${sysPrefs.weekStart==="sunday"?"selected":""}>Sonntag</option></select></div>
+       <div class="settings-row"><div><strong>Sprache</strong><small>Gesamte App-Oberfläche</small></div><select id="prefLanguage" class="field settings-system-select"><option value="de" ${sysPrefs.language!=="en"?"selected":""}>Deutsch</option><option value="en" ${sysPrefs.language==="en"?"selected":""}>English</option></select></div>
+       </div>`;
+     const training=[...body.querySelectorAll(".settings-section")].find(x=>x.querySelector("h3")?.textContent==="Training"||x.querySelector("h3")?.textContent==="Training");
+     if(training)body.insertBefore(sec,training);else body.appendChild(sec);
+
+     $("prefUnitSystem").onchange=()=>{
+       sysPrefs.unitSystem=$("prefUnitSystem").value;applySystemDerivedV31();
+       if(window.rethinkPrefsV31){
+         // old helper reads the same persisted preference object on next render; current display is handled here.
+       }
+       renderProfile();if(activeWorkout)renderLive();applyTranslationsV31()
+     };
+     $("prefWeekStartFinal").onchange=()=>{
+       const oldMode=sysPrefs.weekStart;sysPrefs.weekStart=$("prefWeekStartFinal").value;write(PREF_KEY,sysPrefs);
+       const legacy=$("prefWeekStart");if(legacy){legacy.value=sysPrefs.weekStart;legacy.dispatchEvent(new Event("change",{bubbles:true}))}
+       else{renderWeek();renderProfile()}
+     };
+     
+     $("prefLanguage").onchange=()=>{sysPrefs.language=$("prefLanguage").value;write(PREF_KEY,sysPrefs);try{captureTabUiState(currentTab);persistUI({capture:false});saveAll()}catch{}location.reload()};
+     applyTranslationsV31()
+   })
  };
 
  // Expose.
@@ -2114,7 +2182,7 @@ if(sysPrefs.unitSystem==="imperial"&&$("profileSummary")&&profile.height){
    }
    s.translate?.()
  }
- __profileEnhancers.push(function(__result,...__args){
+ __rt.profile.post.push(function(__result,...__args){
 const r=__result;
 enforceProfileSystemV31();
    requestAnimationFrame(enforceProfileSystemV31);
@@ -2184,7 +2252,7 @@ enforceProfileSystemV31();
      mode:"full-safe",
      scope:"all-personal-data",
      createdAt:new Date().toISOString(),
-     app:"RETHINK.fitness",
+     app:"ReThink. Fitness",
      localStorage:data
    }
  }
@@ -2196,7 +2264,7 @@ enforceProfileSystemV31();
    // iPhone/iPad local previews are much more reliable with the native share sheet than a blob navigation.
    try{
      if(navigator.share&&(!navigator.canShare||navigator.canShare({files:[file]}))){
-       await navigator.share({files:[file],title:"RETHINK.fitness Backup"});
+       await navigator.share({files:[file],title:"ReThink. Fitness Backup"});
        try{toast("Backup erstellt")}catch{}
        return
      }
@@ -2264,9 +2332,9 @@ enforceProfileSystemV31();
      Object.values(node).forEach(v=>{if(v&&typeof parseMaybe(v)==="object")walk(v,depth+1)})
    };
    x=parseMaybe(x);
-   if(!x||typeof x!=="object")throw new Error("Keine gültige RETHINK.fitness Backupdatei.");
+   if(!x||typeof x!=="object")throw new Error("Keine gültige ReThink. Fitness Backupdatei.");
    walk(x);
-   if(!Object.keys(out).length)throw new Error("Die Backupdatei enthält keine wiederherstellbaren RETHINK.fitness Daten.");
+   if(!Object.keys(out).length)throw new Error("Die Backupdatei enthält keine wiederherstellbaren ReThink. Fitness Daten.");
    return out
  }
  async function restore(file){
@@ -2276,14 +2344,17 @@ enforceProfileSystemV31();
    if(!confirm("Backup wiederherstellen?\n\nWiederhergestellt werden – soweit im Backup enthalten – Trainingspläne, eigene Übungen, Trainingsverlauf, laufendes Workout, Körpermessungen, Ernährung und Lebensmittel, Profil, Hydrierung sowie Wochenpläne.\n\nDie aktuellen persönlichen Daten werden durch den Stand des Backups ersetzt. App-Code und integrierter Übungskatalog bleiben aktuell."))return;
 
    const allowed=personalBackupKeysV31();
- const before={};allowed.forEach(k=>{const v=localStorage.getItem(k);if(v!==null)before[k]=v});
- try{
-  allowed.forEach(k=>localStorage.removeItem(k));
-  Object.entries(normalized).forEach(([k,v])=>{if(allowed.includes(k)&&typeof v==="string")localStorage.setItem(k,v)})
- }catch(err){
-  try{allowed.forEach(k=>localStorage.removeItem(k));Object.entries(before).forEach(([k,v])=>localStorage.setItem(k,v))}catch(_){}
-  throw new Error("Backup konnte nicht vollständig wiederhergestellt werden. Die bisherigen Daten wurden beibehalten.")
- }
+   const before={};allowed.forEach(k=>{before[k]=localStorage.getItem(k)});
+   try{
+     allowed.forEach(k=>localStorage.removeItem(k));
+     Object.entries(normalized).forEach(([k,v])=>{
+       if(allowed.includes(k)&&typeof v==="string")localStorage.setItem(k,v)
+     });
+   }catch(err){
+     allowed.forEach(k=>localStorage.removeItem(k));
+     Object.entries(before).forEach(([k,v])=>{if(v!==null)localStorage.setItem(k,v)});
+     throw new Error("Backup konnte nicht vollständig wiederhergestellt werden. Die bisherigen Daten wurden beibehalten.");
+   }
 
    try{toast("Backup wiederhergestellt")}catch{}
    setTimeout(()=>location.reload(),300)
@@ -2739,7 +2810,7 @@ enforceProfileSystemV31();
    if(typeof renderProfileProgress==="function")renderProfileProgress()
  }
  window.refreshCompletedStreaks=refreshCompletedStreaks;
- __profileEnhancers.push(function(__result,...__args){
+ __rt.profile.post.push(function(__result,...__args){
 const r=__result;
 refreshCompletedStreaks();return r
 });
@@ -2798,7 +2869,7 @@ refreshCompletedStreaks();return r
    if(Notification.permission==='granted')return toast(T('Mitteilungen sind erlaubt.','Notifications are enabled.'));
    const p=await Notification.requestPermission();toast(p==='granted'?T('Mitteilungen sind erlaubt.','Notifications are enabled.'):T('Mitteilungen wurden nicht erlaubt.','Notifications were not enabled.'))
  }
- function notify(title,body){if('Notification'in window&&Notification.permission==='granted'&&document.visibilityState==='visible'){try{new Notification(title,{body,icon:'./icons/icon-192.png'})}catch{}}}
+ function notify(title,body){if('Notification'in window&&Notification.permission==='granted'&&document.visibilityState==='visible'){try{new Notification(title,{body,icon:'./icon-192.png'})}catch{}}}
  function reminderTick(){const r=reminders(),now=new Date(),hm=`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`,today=key(now);
    [['drink','drinkTime',T('Trinken','Hydration'),T('Zeit, etwas zu trinken.','Time to have a drink.')],['food','foodTime',T('Essen','Nutrition'),T('Zeit, an deine Ernährung zu denken.','Time to check in with your nutrition.')]].forEach(([on,tm,title,body])=>{
     const sent=`rethink_reminder_sent_${on}_${today}_${hm}`;if(r[on]&&r[tm]===hm&&!sessionStorage.getItem(sent)){sessionStorage.setItem(sent,'1');notify(title,body);try{toast(body)}catch{}}
@@ -2810,6 +2881,11 @@ refreshCompletedStreaks();return r
  function deleteAllNutrition(){if(!confirm(T('Alle Ernährungsdaten wirklich löschen? Verlauf, eigene Lebensmittel, Mahlzeiten und Ernährungsziele werden entfernt.','Really delete all nutrition data? History, custom foods, meals and nutrition goals will be removed.')))return;
    const drinks=nutrition.drinks||[];nutrition={calories:'',protein:'',waterGoal:'',hydration:0,consumedCalories:0,consumedProtein:0,foodLog:[],foods:[],meals:[],drinks};saveAll();renderProfile();toast(T('Ernährungsdaten gelöscht','Nutrition data deleted'));window.openSettingsPage?.()}
  window.rethinkDeleteAllNutrition=deleteAllNutrition;
+ window.rethinkRemindersV32={
+   get:()=>reminders(),
+   save:x=>saveReminders(x),
+   request:()=>askNotifications()
+ };
  function deleteHydration(){if(!confirm(T('Den gesamten Hydrierungsverlauf wirklich löschen?','Really delete the entire hydration history?')))return;write(HYDRATION_LOG_KEY,[]);nutrition.hydration=0;saveAll();renderProfile();toast(T('Hydrierungsverlauf gelöscht','Hydration history deleted'));window.openSettingsPage?.()}
 
 
@@ -2817,8 +2893,15 @@ refreshCompletedStreaks();return r
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(maybeWeekly,900),{once:true});else setTimeout(maybeWeekly,900);
 })();
 
-/* Active-workout start-card visibility is handled by the authoritative training renderer. */
+/* Lean v6: an active workout never shows the start-training card. */
+(function(){
+ const old=window.renderTrainingHome||renderTrainingHome;
+ 
+ document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){const c=document.getElementById('startTrainingCard');if(c)c.classList.toggle('hidden',!!activeWorkout)}})
+})();
 
+
+;
 
 /* ReThink v24 — single input visibility controller */
 (function(){
@@ -2979,7 +3062,7 @@ refreshCompletedStreaks();return r
  }
  // Do not allow browsing into the future; past days are snapshots, not editors.
  changeProfileDay=function(delta){profileDayOffset=Math.min(0,profileDayOffset+delta);localStorage.setItem(PROFILE_DAY_OFFSET_KEY,String(profileDayOffset));renderProfile();requestAnimationFrame(()=>window.scrollTo({top:0,behavior:'auto'}))};
- __profileEnhancers.push(function(__result,...__args){
+ __rt.profile.post.push(function(__result,...__args){
 const r=__result;
 patchHistoricalState();return r
 });
@@ -3004,11 +3087,38 @@ patchHistoricalState();return r
 })();
 
 
-/* RETHINK 2026-09-16 — reliability helpers without competing plan-save authority.
-   Plan editor/save/exit state is owned exclusively by app-core.js. */
+/* RETHINK 2026-09-12F — single authoritative reliability layer.
+   Important: no overrides of workout finish or custom-exercise editor live here.
+   Those are owned by app-core.js so their handlers cannot fight duplicate patches. */
 (()=>{
+ const el=id=>document.getElementById(id);
  const same=(a,b)=>String(a)===String(b);
  const stop=e=>{e.preventDefault();e.stopPropagation();e.stopImmediatePropagation()};
+
+ // Plan save/delete reliability only. One handler, independent of numeric/string ids.
+ function planSave(){
+   if(!currentPlan)return false;
+   const name=String(el('planName')?.value||currentPlan.name||'').trim();
+   if(!name){alert('Bitte Planname eingeben.');return false}
+   if(!(currentPlan.exercises||[]).length){alert('Ein Trainingsplan braucht mindestens eine Übung.');return false}
+   currentPlan.name=name;
+   const source=currentPlan._editingSourceId;
+   let saved=clone(currentPlan);saved.updatedAt=Date.now();delete saved._isNew;delete saved._editingSourceId;delete saved._originalName;
+   if(source!=null){
+     const i=plans.findIndex(p=>same(p.id,source));
+     if(i>=0){saved.id=plans[i].id;saved.createdAt=plans[i].createdAt||saved.createdAt||Date.now();plans[i]=clone(saved)}
+     else{saved.id=uid();saved.createdAt=Date.now();plans.push(clone(saved))}
+   }else{
+     const i=plans.findIndex(p=>same(p.id,saved.id));
+     if(i>=0)plans[i]=clone(saved);else plans.push(clone(saved));
+   }
+   currentPlan=clone(saved);editorDirty=false;saveAll();try{setEditorBaseline()}catch{};renderPlans();renderWeek();toast('Plan gespeichert');return true
+ }
+ function closeEditorToPlans(){
+   try{closeSheet({all:true})}catch{}
+   document.querySelectorAll('.page').forEach(x=>x.classList.add('hidden'));pageStack=[];
+   el('bottomNav')?.classList.remove('hidden');showTab('plans',{reset:true});renderPlans();renderWeek();
+ }
  function planDelete(id){
    const p=plans.find(x=>same(x.id,id));if(!p)return false;
    if(!confirm(`„${p.name}“ wirklich löschen?`))return false;
@@ -3017,13 +3127,66 @@ patchHistoricalState();return r
    saveAll();renderPlans();renderWeek();renderTrainingHome();toast('Plan gelöscht');return true
  }
  document.addEventListener('click',e=>{
-   const b=e.target.closest?.('button');if(!b||!b.matches('[data-quick-delete],[data-swipe-delete]'))return;
-   stop(e);planDelete(b.dataset.quickDelete||b.dataset.swipeDelete);
+   const b=e.target.closest?.('button');if(!b)return;
+   if(b.id==='planSaveBtn'||b.id==='confirmPlanSave'||b.id==='confirmExistingPlanSave'||b.id==='backSavePlan'){
+     stop(e);if(planSave())closeEditorToPlans();return
+   }
+   if(b.matches('[data-quick-delete],[data-swipe-delete]')){
+     stop(e);planDelete(b.dataset.quickDelete||b.dataset.swipeDelete);return
+   }
  },true);
 
- // Profile rendering is owned by app-core.js; no secondary profile post-render authority.
+ // Profile must visibly reflect saved data after every render. Core owns saving and buttons.
+ function refreshProfileVisible(){
+   try{
+     const u=window.rethinkPrefsV31||{};
+     const wDisp=v=>u.weightDisplay?u.weightDisplay(v):v;
+     const wLabel=()=>u.weightLabel?u.weightLabel().toLowerCase():'kg';
+     const lDisp=v=>u.lengthDisplay?u.lengthDisplay(v):v;
+     const lLabel=()=>u.lengthLabel?u.lengthLabel().toLowerCase():'cm';
+     const box=el('profileInputOverview');
+     if(box){
+       const latest=(measurements||[]).slice().sort((a,b)=>Number(a.date)-Number(b.date)).at(-1);
+       const w=Number(latest?.weight||profile.weight||0);
+       const a=profile.activity?activityLabel(profile.activity):'–';
+       const sex=profile.sex==='male'?'Männlich':profile.sex==='female'?'Weiblich':'–';
+       const goal=profile.goal==='cut'?'Abnehmen':profile.goal==='gain'?'Zunehmen':profile.goal==='maintain'?'Halten':'–';
+       const h=profile.height?lDisp(profile.height):'';
+       const tw=profile.targetWeight?wDisp(profile.targetWeight):'';
+       box.innerHTML=`<div><span>Alter</span><strong>${profile.age?`${profile.age} J.`:'–'}</strong></div><div><span>Größe</span><strong>${h?`${h} ${lLabel()}`:'–'}</strong></div><div><span>Gewicht</span><strong>${w?`${wDisp(w)} ${wLabel()}`:'–'}</strong></div><div><span>Geschlecht</span><strong>${sex}</strong></div><div><span>Ziel</span><strong>${goal}</strong></div><div><span>Wunschgewicht</span><strong>${tw?`${tw} ${wLabel()}`:'–'}</strong></div><div><span>Aktivität</span><strong>${esc(a)}</strong></div>`;
+     }
+     const drinks=typeof todayHydrationEntries==='function'?todayHydrationEntries():[];
+     const foods=typeof todayFoodEntries==='function'?todayFoodEntries():[];
+     if(typeof renderMeasurementCharts==='function')renderMeasurementCharts();
+   }catch(err){console.error('profile refresh',err)}
+ }
+ if(window.__rt?.profile?.post)window.__rt.profile.post.push(()=>refreshProfileVisible());
+ requestAnimationFrame(()=>{try{refreshProfileVisible()}catch{}});
 })();
 
+
+/* VERIFIED FIX 2026-09-12: stable current profile + live recommendation integrity. */
+(function(){
+  if(window.__rt?.live?.post){
+    window.__rt.live.post.push(function(result){
+      try{
+        if(!activeWorkout)return result;
+        document.querySelectorAll('#liveBody .live-exercise-card[data-live-card]').forEach(card=>{
+          if(card.querySelector('.live-recommendation'))return;
+          const members=String(card.dataset.liveMembers||'').split(',').filter(Boolean).map(Number).filter(Number.isFinite);
+          const idx=Number(card.dataset.liveCard);
+          let html='';
+          if(members.length>1&&window.rethinkRecommendationGroupHtml)html=window.rethinkRecommendationGroupHtml(members);
+          else if(activeWorkout.exercises?.[idx]&&window.rethinkRecommendationHtml)html=window.rethinkRecommendationHtml(activeWorkout.exercises[idx]);
+          if(!html)return;
+          const anchor=members.length>1?(card.querySelector('.combined-series-head')||card.querySelector('.method-help')):(card.querySelector('.note-line')||card.querySelector('.live-card-head')||card.querySelector('.method-help'));
+          anchor?.insertAdjacentHTML('afterend',html);
+        });
+      }catch(err){console.error('verified live recommendation',err)}
+      return result;
+    });
+  }
+})();
 
 /* RETHINK 2026-09-13 — profile controls: one capture-level interaction authority. */
 (()=>{
@@ -3039,34 +3202,57 @@ patchHistoricalState();return r
  },true);
 })();
 
-/* v74 — editable built-in recipes + portrait-only presentation */
+/* v76 — authoritative meal/recipe editor: visible ingredients, live quantities, replace/add/remove, exact snapshot */
 (function(){
- const baseFoodsV74=()=>v69FoodList().filter(f=>!f.isMeal);
- const findFoodV74=name=>baseFoodsV74().find(f=>String(f.name)===String(name));
- function recipeItemsV74(meal){
-   if(Array.isArray(meal.items)&&meal.items.length)return clone(meal.items);
-   const amounts=Array.isArray(meal.ingredientAmounts)?meal.ingredientAmounts:[];
-   return amounts.map(a=>{const f=findFoodV74(a.name);return f?{food:{name:f.name,category:f.category,kcal:f.kcal,protein:f.protein,water:f.water,servingGrams:v69Serving(f).grams,servingLabel:v69Serving(f).label},grams:Number(a.grams)||1}:null}).filter(Boolean)
+ const baseFoodsV76=()=>v69FoodList().filter(f=>!f.isMeal);
+ const findFoodV76=name=>baseFoodsV76().find(f=>String(f.name)===String(name));
+ const snapFoodV76=f=>({name:f.name,category:f.category,kcal:Number(f.kcal)||0,protein:Number(f.protein)||0,water:Number(f.water)||0,servingGrams:v69Serving(f).grams,servingLabel:v69Serving(f).label});
+ function recipeItemsV76(meal){
+   if(Array.isArray(meal?.mealItems)&&meal.mealItems.length)return clone(meal.mealItems);
+   if(Array.isArray(meal?.items)&&meal.items.length)return clone(meal.items).map(x=>({food:snapFoodV76(x.food||x),grams:Number(x.grams)||1}));
+   return (Array.isArray(meal?.ingredientAmounts)?meal.ingredientAmounts:[]).map(a=>{const f=findFoodV76(a.name);return f?{food:snapFoodV76(f),grams:Number(a.grams)||1}:null}).filter(Boolean)
  }
- function totalsV74(items){return window.__mealTotalsV52?window.__mealTotalsV52(items):{grams:0,kcal:0,protein:0,water:0}}
- function openRecipeV74(meal,existingLog=null){
-   const d={name:meal.name,items:existingLog?.mealItems?clone(existingLog.mealItems):recipeItemsV74(meal)};
+ function totalsV76(items){
+   return items.reduce((t,x)=>{const g=Math.max(0,Number(x.grams)||0),f=x.food||{};t.grams+=g;t.kcal+=(Number(f.kcal)||0)*g/100;t.protein+=(Number(f.protein)||0)*g/100;t.water+=(Number(f.water)||0)*g/100;return t},{grams:0,kcal:0,protein:0,water:0})
+ }
+ function nutrientLineV76(t){return `${Math.round(t.grams)} g · ${Math.round(t.kcal)} kcal · ${Math.round(t.protein*10)/10} g Protein · ${Math.round(t.water)} g Wasser`}
+ function pickIngredientV76(title,onPick){
+   let q="";
+   const results=()=>{const n=v69Norm(q);return baseFoodsV76().filter(f=>!n||v69Norm([f.name,f.category,...(f.searchTerms||[])].join(" ")).includes(n)).slice(0,120)};
+   const renderRows=()=>results().map(f=>`<button type="button" class="food-result" data-v76-pick="${esc(f.name)}"><div class="food-result-copy"><strong>${esc(f.name)}</strong><small>${esc(f.category||"Lebensmittel")}</small></div><span class="food-result-values">${Math.round(Number(f.kcal)||0)} kcal · ${Math.round((Number(f.protein)||0)*10)/10} g Protein</span></button>`).join("")||'<div class="small">Kein Lebensmittel gefunden.</div>';
+   openSheet(title,`<div class="search food-search"><span class="search-loupe">⌕</span><input id="v76IngredientSearch" class="field" type="search" placeholder="Lebensmittel suchen"></div><div id="v76IngredientRows" class="stable-search-results">${renderRows()}</div>`,()=>{
+     const bind=()=>document.querySelectorAll("[data-v76-pick]").forEach(b=>b.onclick=()=>{const f=findFoodV76(b.dataset.v76Pick);if(f)onPick(f)});
+     const inp=$("v76IngredientSearch");inp.oninput=()=>{q=inp.value;$("v76IngredientRows").innerHTML=renderRows();bind()};bind();requestAnimationFrame(()=>inp.focus())
+   })
+ }
+ function openRecipeV76(meal,existingLog=null){
+   const d={name:String(meal?.name||existingLog?.name||"Mahlzeit"),items:existingLog?.mealItems?.length?clone(existingLog.mealItems):recipeItemsV76(meal)};
    const render=()=>{
-     const t=totalsV74(d.items);
-     const rows=d.items.map((x,i)=>{const n=v69Nutrients(x.food,Number(x.grams)||0);return `<div class="meal-ingredient-row"><div class="meal-ingredient-copy"><strong>${esc(x.food.name)}</strong><small>${n.kcal} kcal · ${n.protein} g Protein</small></div><input class="field meal-ingredient-grams" inputmode="decimal" data-v74-g="${i}" value="${esc(x.grams)}"><span class="small">g</span><button class="secondary" data-v74-change="${i}">Ändern</button><button class="remove-mini" data-v74-del="${i}" aria-label="Zutat löschen">−</button></div>`}).join('');
-     openSheet(d.name,`<div class="meal-builder-total"><strong>${esc(d.name)}</strong><div id="v74Total">${Math.round(t.grams)} g · ${Math.round(t.kcal)} kcal · ${Math.round(t.protein*10)/10} g Protein</div></div><div class="small" style="margin:8px 0 4px">ZUTATEN – MENGEN DIREKT VERÄNDERBAR</div><div id="v74Rows">${rows||'<div class="small">Keine Zutaten.</div>'}</div><button id="v74AddIngredient" class="secondary" style="width:100%;margin-top:8px">Zutat hinzufügen</button><button id="v74Commit" class="primary" style="width:100%;margin-top:10px">${existingLog?'Änderungen speichern':'Mahlzeit eintragen'}</button>`);
-     const refreshTotal=()=>{const tt=totalsV74(d.items),el=$('v74Total');if(el)el.textContent=`${Math.round(tt.grams)} g · ${Math.round(tt.kcal)} kcal · ${Math.round(tt.protein*10)/10} g Protein`};
-     document.querySelectorAll('[data-v74-g]').forEach(inp=>inp.oninput=()=>{d.items[+inp.dataset.v74G].grams=Math.max(0,Number(String(inp.value).replace(',','.'))||0);refreshTotal()});
-     document.querySelectorAll('[data-v74-del]').forEach(b=>b.onclick=()=>{d.items.splice(+b.dataset.v74Del,1);render()});
-     document.querySelectorAll('[data-v74-change]').forEach(b=>b.onclick=()=>{const i=+b.dataset.v74Change;openFoodSearch('',{title:'Zutat ersetzen',selectOnly:true,onSelect:f=>{if(f.isMeal)return toast('Bitte ein einzelnes Lebensmittel wählen.');d.items[i]={food:{name:f.name,category:f.category,kcal:f.kcal,protein:f.protein,water:f.water,servingGrams:v69Serving(f).grams,servingLabel:v69Serving(f).label},grams:d.items[i].grams};closeSheet({all:false});render()}})});
-     $('v74AddIngredient').onclick=()=>openFoodSearch('',{title:'Zutat hinzufügen',selectOnly:true,onSelect:f=>{if(f.isMeal)return toast('Bitte ein einzelnes Lebensmittel wählen.');d.items.push({food:{name:f.name,category:f.category,kcal:f.kcal,protein:f.protein,water:f.water,servingGrams:v69Serving(f).grams,servingLabel:v69Serving(f).label},grams:v69Serving(f).grams});closeSheet({all:false});render()}});
-     $('v74Commit').onclick=()=>{if(!d.items.length)return toast('Mindestens eine Zutat erforderlich.');const tt=totalsV74(d.items),payload={name:d.name,category:'Mahlzeit',grams:Math.round(tt.grams),kcal:Math.round(tt.kcal),protein:Math.round(tt.protein*10)/10,water:Math.round(tt.water),mealItems:clone(d.items),recipeSource:meal.name};if(existingLog){Object.assign(existingLog,payload)}else{nutrition.foodLog=Array.isArray(nutrition.foodLog)?nutrition.foodLog:[];nutrition.foodLog.push({id:uid(),date:profileDateKey(),...payload})}recalcFoodTotals();saveAll();closeSheet({all:true});renderProfile()}
-   };
-   render()
+     const t=totalsV76(d.items);
+     const rows=d.items.map((x,i)=>{const n=totalsV76([x]);return `<div class="meal-ingredient-row v76"><div class="meal-ingredient-copy"><strong>${esc(x.food.name)}</strong><small>${Math.round(n.kcal)} kcal · ${Math.round(n.protein*10)/10} g Protein</small></div><input class="field meal-ingredient-grams" inputmode="decimal" data-v76-grams="${i}" value="${esc(x.grams)}"><span class="small">g</span><button type="button" class="secondary" data-v76-replace="${i}">Ersetzen</button><button type="button" class="remove-mini" data-v76-remove="${i}" aria-label="Zutat entfernen">−</button></div>`}).join("");
+     openSheet(d.name,`<div class="meal-builder-total"><strong>${esc(d.name)}</strong><div id="v76MealTotal">${nutrientLineV76(t)}</div></div><div class="small meal-editor-caption">ZUTATEN</div><div id="v76MealRows">${rows||'<div class="small">Keine Zutaten.</div>'}</div><button id="v76AddIngredient" type="button" class="secondary" style="width:100%;margin-top:10px">+ Zutat hinzufügen</button><button id="v76CommitMeal" type="button" class="primary" style="width:100%;margin-top:10px">${existingLog?"Änderungen speichern":"Mahlzeit eintragen"}</button>`,()=>{
+       const refresh=()=>{const e=$("v76MealTotal");if(e)e.textContent=nutrientLineV76(totalsV76(d.items))};
+       document.querySelectorAll("[data-v76-grams]").forEach(inp=>inp.oninput=()=>{d.items[+inp.dataset.v76Grams].grams=Math.max(0,Number(String(inp.value).replace(",","."))||0);refresh()});
+       document.querySelectorAll("[data-v76-remove]").forEach(b=>b.onclick=()=>{d.items.splice(+b.dataset.v76Remove,1);render()});
+       document.querySelectorAll("[data-v76-replace]").forEach(b=>b.onclick=()=>{const i=+b.dataset.v76Replace;pickIngredientV76("Zutat ersetzen",f=>{const grams=d.items[i]?.grams||v69Serving(f).grams;d.items[i]={food:snapFoodV76(f),grams};closeSheet({all:false});render()})});
+       $("v76AddIngredient").onclick=()=>pickIngredientV76("Zutat hinzufügen",f=>{d.items.push({food:snapFoodV76(f),grams:v69Serving(f).grams});closeSheet({all:false});render()});
+       $("v76CommitMeal").onclick=()=>{
+         d.items=d.items.filter(x=>Number(x.grams)>0);if(!d.items.length)return toast("Mindestens eine Zutat erforderlich.");
+         const tt=totalsV76(d.items),payload={name:d.name,category:"Mahlzeit",grams:Math.round(tt.grams),kcal:Math.round(tt.kcal),protein:Math.round(tt.protein*10)/10,water:Math.round(tt.water),mealItems:clone(d.items),recipeSource:meal?.name||existingLog?.recipeSource||d.name,recipeSnapshotVersion:76};
+         if(existingLog)Object.assign(existingLog,payload);else{nutrition.foodLog=Array.isArray(nutrition.foodLog)?nutrition.foodLog:[];nutrition.foodLog.push({id:uid(),date:profileDateKey(),...payload})}
+         recalcFoodTotals();saveAll();closeSheet({all:true});renderProfile()
+       }
+     })
+   };render()
  }
- window.__openBuiltinRecipeV74=openRecipeV74;
- // Built-in and custom meals are routed by the primary food-search handlers above.
- // Existing logged recipe: reopen the exact ingredient snapshot instead of only scaling total grams.
- __profileEnhancers.push(function(){document.querySelectorAll('[data-edit-food-entry]').forEach(row=>{const id=row.dataset.editFoodEntry,x=(nutrition.foodLog||[]).find(v=>String(v.id)===String(id));if(!x||String(x.category)!=='Mahlzeit')return;const source=v69FoodList().find(f=>f.isMeal&&String(f.name)===String(x.recipeSource||x.name))||(nutrition.meals||[]).find(m=>String(m.id)===String(x.mealId))||null;if(!source&&!x.mealItems)return;row.onclick=e=>{if(e.target.closest('[data-food-del]'))return;openRecipeV74(source||{name:x.name,items:x.mealItems},x)}})});
- try{screen.orientation?.lock?.('portrait-primary').catch(()=>{})}catch(e){}
+ window.__openBuiltinRecipeV74=openRecipeV76;
+ window.__openMealRecipeV76=openRecipeV76;
+ if(window.__rt?.profile?.post)window.__rt.profile.post.push(function(){
+   document.querySelectorAll("[data-edit-food-entry]").forEach(row=>{
+     const x=(nutrition.foodLog||[]).find(v=>String(v.id)===String(row.dataset.editFoodEntry));if(!x||String(x.category)!=="Mahlzeit")return;
+     const source=v69FoodList().find(f=>f.isMeal&&String(f.name)===String(x.recipeSource||x.name))||(nutrition.meals||[]).find(m=>String(m.id)===String(x.mealId))||{name:x.name,mealItems:x.mealItems};
+     row.onclick=e=>{if(e.target.closest("[data-food-del]"))return;openRecipeV76(source,x)}
+   })
+ })
 })();
+

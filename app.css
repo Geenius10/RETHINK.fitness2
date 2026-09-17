@@ -3063,3 +3063,13 @@ html.rethink-keyboard-visible .sheet-wrap.rethink-entry-sheet .sheet-body{paddin
   #portraitOnlyBlocker .portrait-only-card{max-width:360px;font-size:17px;line-height:1.45;font-weight:700}
   #portraitOnlyBlocker .portrait-only-icon{display:block;font-size:42px;margin-bottom:14px}
 }
+
+/* v76 meal recipe editor — ingredients are first-class editable rows */
+.meal-editor-caption{margin:14px 0 6px;font-weight:800;letter-spacing:.06em}
+.meal-ingredient-row.v76{grid-template-columns:minmax(0,1fr) 70px 18px auto 38px!important}
+.meal-ingredient-row.v76 .meal-ingredient-grams{height:42px!important}
+.meal-ingredient-row.v76 [data-v76-replace]{min-height:38px!important;white-space:nowrap}
+@media(max-width:430px){
+ .meal-ingredient-row.v76{grid-template-columns:minmax(0,1fr) 62px 14px 72px 36px!important;gap:5px!important}
+ .meal-ingredient-row.v76 [data-v76-replace]{font-size:11px!important;padding:5px!important}
+}

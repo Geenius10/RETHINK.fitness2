@@ -1,12 +1,17 @@
 {
-  "name": "RETHINK.fitness",
-  "short_name": "RETHINK.fitness",
+  "name": "ReThink. Fitness",
+  "short_name": "ReThink. Fitness",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#d9d9de",
   "theme_color": "#111114",
   "orientation": "portrait-primary",
   "icons": [
+    {
+      "src": "icon-180.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
     {
       "src": "icon-192.png",
       "sizes": "192x192",
@@ -18,5 +23,6 @@
       "type": "image/png"
     }
   ],
-  "version": "2026.09.17"
+  "version": "2026.09.17",
+  "id": "./"
 }
