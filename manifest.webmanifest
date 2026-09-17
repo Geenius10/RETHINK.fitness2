@@ -8,11 +8,6 @@
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "icon-180.png",
-      "sizes": "180x180",
-      "type": "image/png"
-    },
-    {
       "src": "icon-192.png",
       "sizes": "192x192",
       "type": "image/png"
@@ -23,5 +18,5 @@
       "type": "image/png"
     }
   ],
-  "version": "2026.09.16"
+  "version": "2026.09.17"
 }

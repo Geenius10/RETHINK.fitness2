@@ -893,7 +893,7 @@ let plansQuickEdit=false;
 function renderPlans(){const defs=[["name","A–Z"],["created","Hinzugefügt"],["updated","Geändert"],["used","Genutzt"]];$("planSortChips").innerHTML=defs.map(([k,l])=>`<button class="chip ${planSort.key===k?"active":""}" data-sort="${k}">${l}${planSort.key===k?(planSort.dir>0?" ↑":" ↓"):""}</button>`).join("");document.querySelectorAll("[data-sort]").forEach(b=>b.onclick=()=>{if(planSort.key===b.dataset.sort)planSort.dir*=-1;else{planSort.key=b.dataset.sort;planSort.dir=1}savePlanSort();renderPlans()});$("planList").classList.toggle("quick-edit",plansQuickEdit);
  $("plansEditBtn").textContent=plansQuickEdit?"Fertig":"Bearbeiten";
  $("planList").innerHTML=plans.length?sortedPlans().map(p=>`<div class="plan-card ${plansQuickEdit?"plan-quick-edit":""}" data-plan="${p.id}"><div><strong>${esc(p.name)}</strong><small>${p.exercises.length} Übungen · ${countPlanSets(p)} Sätze</small></div><span class="chev">›</span>${plansQuickEdit?`<button class="plan-quick-delete" data-quick-delete="${p.id}" aria-label="${esc(p.name)} löschen">−</button>`:`<button class="plan-swipe-delete" data-swipe-delete="${p.id}">Löschen</button>`}</div>`).join(""):`<div class="plan-welcome-card card"><div class="plan-welcome-mark">R.</div><h2>Dein Training beginnt hier.</h2><p>Erstelle deinen ersten Trainingsplan und stelle Übungen, Sätze und Trainingsmethoden passend zu deinem Training zusammen.</p><button id="planWelcomeCreate" class="primary plan-welcome-create">Trainingsplan erstellen</button></div>`;if(!plans.length&&$("planWelcomeCreate"))$("planWelcomeCreate").onclick=()=>$("newPlanBtn").click();document.querySelectorAll("[data-plan]").forEach(card=>{const id=Number(card.dataset.plan);let timer,startX=0,startY=0,dx=0,dy=0,longFired=false;const cancelHold=()=>{clearTimeout(timer);timer=null};card.onclick=e=>{if(plansQuickEdit||e.target.closest("[data-swipe-delete],[data-quick-delete]")||longFired)return;editPlan(id)};card.oncontextmenu=e=>e.preventDefault();card.onpointerdown=e=>{startX=e.clientX;startY=e.clientY;dx=0;dy=0;longFired=false;card.classList.add("hold-armed");cancelHold();timer=setTimeout(()=>{longFired=true;card.classList.add("hold-ready");setTimeout(()=>{card.classList.remove("hold-armed","hold-ready");openPlanLongActions(id)},120)},700)};card.onpointermove=e=>{dx=e.clientX-startX;dy=e.clientY-startY;if(Math.abs(dx)>12||Math.abs(dy)>12)cancelHold()};card.onpointerup=()=>{cancelHold();card.classList.remove("hold-armed","hold-ready");if(!longFired){if(dx<-45){closeAllSwipeActions(card);card.classList.add("swipe-open")}else if(dx>25)card.classList.remove("swipe-open")}};card.onpointercancel=()=>{cancelHold();card.classList.remove("hold-armed","hold-ready")};card.onpointerleave=()=>{cancelHold();card.classList.remove("hold-armed","hold-ready")}});document.querySelectorAll("[data-swipe-delete]").forEach(b=>b.onclick=e=>{e.stopPropagation();deletePlanAsked(Number(b.dataset.swipeDelete))});
- document.querySelectorAll("[data-quick-delete]").forEach(b=>b.onclick=e=>{e.stopPropagation();const id=Number(b.dataset.quickDelete);plans=plans.filter(x=>x.id!==id);saveAll();renderPlans();renderWeek()})
+ document.querySelectorAll("[data-quick-delete]").forEach(b=>b.onclick=e=>{e.stopPropagation();deletePlanAsked(Number(b.dataset.quickDelete))})
 }
 $("plansEditBtn").onclick=()=>{plansQuickEdit=!plansQuickEdit;renderPlans()};
 function closeAllSwipeActions(except=null){document.querySelectorAll(".swipe-open").forEach(x=>{if(x!==except)x.classList.remove("swipe-open")})}
@@ -919,17 +919,38 @@ function editPlan(id){
  setEditorBaseline();openPlanEditor()
 }
 function openPlanEditor(){$("planName").value=currentPlan.name||"";renderEditorExercises();openPage("planEditorPage")}
-$("planEditorBack").onclick=()=>{
- if(!editorHasChanges()){closePage();return}
- openSheet("Planbearbeitung verlassen?",`<p class="muted">Du hast Änderungen vorgenommen.</p><div class="save-choice-stack"><button id="backSavePlan" class="primary">Änderungen speichern</button><button id="discardPlanChanges" class="secondary danger">Plan verwerfen</button><button id="stayInPlan" class="secondary">Weiter bearbeiten</button></div>`);
- $("discardPlanChanges").onclick=()=>{closeSheet({all:true});editorDirty=false;closePage()};$("stayInPlan").onclick=()=>closeSheet({all:true});$("backSavePlan").onclick=()=>{closeSheet({all:true});if(currentPlan._editingSourceId)askExistingPlanSave(()=>{editorDirty=false;closePage();renderPlans()});else if(saveCurrentPlan()){editorDirty=false;closePage();renderPlans()}}
-};$("planName").addEventListener("input",()=>{if(currentPlan){currentPlan.name=$("planName").value;markEditorDirty()}});
+$("planEditorBack").onclick=()=>requestPlanEditorExit({toPlans:false});
+$("planName").addEventListener("input",()=>{if(currentPlan){currentPlan.name=$("planName").value;markEditorDirty()}});
 
 function planStructureSnapshot(p){const x=clone(p||{});delete x.name;delete x.updatedAt;delete x.lastUsedAt;delete x._editingSourceId;delete x._originalName;delete x._isNew;delete x.id;delete x.createdAt;delete x.sourcePlanId;return JSON.stringify(x)}
 function editorOnlyRenamed(){if(!currentPlan?._editingSourceId)return false;const src=plans.find(p=>p.id===currentPlan._editingSourceId);return !!src&&planStructureSnapshot(src)===planStructureSnapshot(currentPlan)&&String(src.name)!==String($("planName").value.trim())}
 function overwriteCurrentPlan(){const entered=$("planName").value.trim();if(!entered)return alert("Bitte Planname eingeben.");const src=plans.find(p=>p.id===currentPlan._editingSourceId);if(!src)return null;const saved=clone(currentPlan);saved.id=src.id;saved.name=entered;saved.createdAt=src.createdAt;saved.updatedAt=Date.now();delete saved._editingSourceId;delete saved._originalName;delete saved._isNew;plans=plans.map(p=>p.id===src.id?clone(saved):p);currentPlan=clone(saved);saveAll();setEditorBaseline();return saved}
 function savePlanAsNew(){const entered=$("planName").value.trim();if(!entered)return alert("Bitte Planname eingeben.");if(!(currentPlan.exercises||[]).length)return alert("Ein Trainingsplan braucht mindestens eine Übung.");const saved=clone(currentPlan);saved.id=uid();saved.name=nextPlanVersionName(currentPlan._originalName||entered);saved.createdAt=Date.now();saved.updatedAt=Date.now();saved.sourcePlanId=currentPlan._editingSourceId||currentPlan.id;delete saved._editingSourceId;delete saved._originalName;delete saved._isNew;plans.push(clone(saved));currentPlan=clone(saved);saveAll();setEditorBaseline();return saved}
-function askExistingPlanSave(after){if(editorOnlyRenamed()){overwriteCurrentPlan();after?.();return}openSheet("Planänderungen speichern?",`<p class="muted">Möchtest du den bisherigen Plan überschreiben oder die Bearbeitung als neuen Plan speichern?</p><div class="save-choice-stack"><button id="overwritePlan" class="primary">Alten Plan überschreiben</button><button id="newPlanVersion" class="secondary">Neuen Plan erstellen</button><button id="cancelPlanSave" class="secondary">Abbrechen</button></div>`);$("overwritePlan").onclick=()=>{if(overwriteCurrentPlan()){closeSheet({all:true});after?.()}};$("newPlanVersion").onclick=()=>{if(savePlanAsNew()){closeSheet({all:true});after?.()}};$("cancelPlanSave").onclick=()=>closeSheet({all:true})}
+function planEditorState(){
+ const isSaved=!!currentPlan?._editingSourceId;
+ const changed=editorHasChanges();
+ return {isSaved,isNew:!isSaved,changed};
+}
+function closePlanEditorToPlans(){editorDirty=false;currentPlan=null;closePage();renderPlans()}
+function askExistingPlanSave(after){
+ openSheet("Planänderungen",`<p class="muted">Dieser Plan ist bereits gespeichert. Was soll mit deinen Änderungen passieren?</p><div class="save-choice-stack"><button id="overwritePlan" class="primary">Plan überschreiben</button><button id="newPlanVersion" class="secondary">Als neuen Plan speichern</button><button id="discardExistingPlanChanges" class="secondary danger">Änderungen verwerfen</button></div>`);
+ $("overwritePlan").onclick=()=>{if(overwriteCurrentPlan()){closeSheet({all:true});after?.()}};
+ $("newPlanVersion").onclick=()=>{if(savePlanAsNew()){closeSheet({all:true});after?.()}};
+ $("discardExistingPlanChanges").onclick=()=>{closeSheet({all:true});after?.({discarded:true})};
+}
+function requestPlanEditorExit({toPlans=false}={}){
+ const st=planEditorState();
+ const finish=()=>{editorDirty=false;currentPlan=null;closePage();if(toPlans)showTab("plans");renderPlans()};
+ if(!st.changed){finish();return}
+ if(st.isNew){
+  openSheet("Neuen Plan verlassen?",`<p class="muted">Dieser Plan wurde noch nicht gespeichert.</p><div class="save-choice-stack"><button id="backSavePlan" class="primary">Plan erstellen</button><button id="discardPlanChanges" class="secondary danger">Plan verwerfen</button></div>`);
+  $("backSavePlan").onclick=()=>{if(saveCurrentPlan()){closeSheet({all:true});finish()}};
+  $("discardPlanChanges").onclick=()=>{closeSheet({all:true});finish()};
+  return
+ }
+ askExistingPlanSave(()=>finish());
+}
+
 function saveCurrentPlan(){
  const entered=$("planName").value.trim();if(!entered)return alert("Bitte Planname eingeben.");
  if(!(currentPlan.exercises||[]).length){alert("Ein Trainingsplan braucht mindestens eine Übung.");return null}
@@ -944,1067 +965,14 @@ function saveCurrentPlan(){
  }
  currentPlan=clone(saved);saveAll();setEditorBaseline();return saved
 }
-$("planSaveBtn").onclick=()=>{if(!editorHasChanges()){closePage();showTab("plans");return}const done=()=>{closePage();showTab("plans");renderPlans()};if(currentPlan._editingSourceId)askExistingPlanSave(done);else{openSheet("Plan wirklich speichern?",`<p class="muted">Möchtest du diesen Trainingsplan speichern?</p><div class="grid2"><button id="cancelPlanSave" class="secondary">Abbrechen</button><button id="confirmPlanSave" class="primary">Speichern</button></div>`);$("cancelPlanSave").onclick=()=>closeSheet({all:true});$("confirmPlanSave").onclick=()=>{if(saveCurrentPlan()){closeSheet({all:true});done()}}}};
-function confirmAndStartPlan(p){
- if(!p||(p.exercises||[]).length===0)return alert("Ein leeres Training kann nicht gestartet werden.");
- const exerciseCount=(p.exercises||[]).length,setCount=countPlanSets(p),minutes=estimateMinutes(p);
- openSheet("Training wirklich starten?",`<div class="start-plan-highlight"><div class="start-plan-kicker">AUSGEWÄHLTER PLAN</div><strong class="start-plan-name">${esc(p.name)}</strong><div class="start-plan-meta">${exerciseCount} Übung${exerciseCount===1?"":"en"} · ${setCount} Sätze · ~${minutes} Min.</div></div><button id="reallyStartPlan" class="primary" style="width:100%">Training starten</button>`);
- $("reallyStartPlan").onclick=()=>{closeSheet({all:true});startWorkout(p)}
-}
-function currentEditorTransientPlan(){
- const n=$("planName").value.trim();if(!n){alert("Bitte Planname eingeben.");return null}
- if(!(currentPlan.exercises||[]).length){alert("Ein Trainingsplan braucht mindestens eine Übung.");return null}
- const p=clone(currentPlan);p.name=n;p.id=`draft_${uid()}`;p.sourcePlanId=currentPlan._editingSourceId||null;p.transientEditorPlan=true;delete p._editingSourceId;delete p._originalName;delete p._isNew;return p
-}
-function startCurrentEditorPlan(){const p=currentEditorTransientPlan();if(p)confirmAndStartPlan(p)}
-$("planPlayBtn").onclick=startCurrentEditorPlan;
-function planPrescription(e){
- const m=e.setTechnique||"standard",pause=`Pause ${formatTime(restSeconds(e,90))}`;
- if(e.measureMode==="time")return`Zeitziel ${formatTime(e.timeSeconds||60)} · ${pause}`;
- if(m==="pyramid"){ensurePyramidData(e);return`WDH.-Ziel je Satz: ${(e.methodData?.reps||[]).join(" → ")} · ${pause}`;}
- if(m==="backoff")return`Wiederholungsziel ${e.methodData?.topReps||5}/${e.methodData?.backoffReps||8} · ${pause}`;
- if(m==="restpause")return`Wiederholungsziel ${Number(e.reps)||20} gesamt · ${pause}`;
- if(m==="cluster")return`Wiederholungsziel ${amrapText(e.reps||"8")} gesamt · ${pause}`;
- const r=amrapText(e.reps||defaultRepsForMethod(m));
- return`Wiederholungsziel ${r} · ${pause}`
-}
-
-function editorVisualGroups(exercises){
- const out=[];
- (exercises||[]).forEach((e,i)=>{
-  if(groupMethod(e.setTechnique)){
-   const key=e.techniqueGroup||`legacy_${i}_${e.setTechnique}`;
-   let g=out.find(x=>x.key===key);
-   if(g)g.items.push({e,i});else out.push({key,method:e.setTechnique,items:[{e,i}]})
-  }else out.push({key:`single_${i}`,method:e.setTechnique||"standard",items:[{e,i}]})
- });
- out.forEach(g=>{if(groupMethod(g.method))g.items.sort((a,b)=>{const ap=Number.isFinite(Number(a.e.groupPosition))?Number(a.e.groupPosition):a.i,bp=Number.isFinite(Number(b.e.groupPosition))?Number(b.e.groupPosition):b.i;return ap-bp||a.i-b.i})});
- return out
-}
-function renderEditorExerciseInner(e,i,letter=""){
- return `<div class="editor-group-exercise"><div class="space"><button class="exercise-title-link editor-group-title" data-editor-detail="${i}">${letter?`<span class="group-letter">${letter}</span><span class="group-title-name">${esc(exerciseDisplayName(e))}</span>`:`<span class="group-title-name">${esc(exerciseDisplayName(e))}</span>`}</button><button class="remove-mini" data-remove-ex="${i}">−</button></div>${exerciseInlineMeta(e)}<div class="editor-ex-meta"><span class="meta-pill">${Number(e.sets||3)} ${Number(e.sets||3)===1?"Satz":"Sätze"}</span><span class="meta-pill">${e.measureMode==="time"?formatTime(e.timeSeconds||300):(amrapText(e.reps||"8-12")+(amrapText(e.reps||"")==="AMRAP"?"":" WDH."))}</span><span class="meta-pill">${formatTime(restSeconds(e,90))} Pause</span>${["cluster","restpause"].includes(e.setTechnique)?`<span class="meta-pill intraset-meta-pill">${Number(e.methodData?.intraRest)||20}s Pause im Satz</span>`:""}</div><div class="editor-action-row"><button class="secondary edit-mini" data-config="${i}">Bearbeiten</button><button class="secondary edit-mini" data-replace="${i}">⇄ Austauschen</button></div></div>`
-}
-function renderEditorExercises(){
- const ep=currentPlan||{exercises:[]};
- $("editorPlanStats").innerHTML=`<div class="stat-grid editor-stat-grid"><div class="stat"><strong>${ep.exercises.length}</strong><span>ÜBUNGEN</span></div><div class="stat"><strong>${countPlanSets(ep)}</strong><span>SÄTZE</span></div><div class="stat"><strong>~${estimateMinutes(ep)} Min.</strong><span>DAUER</span></div></div>`;
- $("editorExerciseList").innerHTML=editorVisualGroups(currentPlan.exercises).map(g=>{
-   const grouped=groupMethod(g.method);
-   return `<div class="method-card method-${g.method} ${grouped?"connected-method-card":""}"><div class="method-name">${METHOD_LABEL[g.method]}</div><div class="method-help">${esc(methodHelp(g.method))}</div>${g.items.map(({e,i},j)=>renderEditorExerciseInner(e,i,grouped?String.fromCharCode(65+j):"")).join("")}${grouped?`<div class="editor-action-row"><button class="secondary edit-mini" data-detach="${g.items[0].i}">⌁ Verknüpfung lösen</button></div>`:""}</div>`
- }).join("");
- document.querySelectorAll("[data-editor-detail]").forEach(b=>b.onclick=()=>openExerciseDetail(currentPlan.exercises[Number(b.dataset.editorDetail)].name));
- document.querySelectorAll("[data-remove-ex]").forEach(b=>b.onclick=()=>{const i=Number(b.dataset.removeEx),name=currentPlan.exercises[i]?.name||"diese Übung";if(!confirm(`„${name}“ wirklich aus dem Trainingsplan löschen?`))return;const removed=currentPlan.exercises.splice(i,1)[0];normalizeBrokenPlanGroupAfterDelete(removed);markEditorDirty();renderEditorExercises();persistUI()});
- document.querySelectorAll("[data-config]").forEach(b=>b.onclick=()=>configureExercise(Number(b.dataset.config)));
- document.querySelectorAll("[data-replace]").forEach(b=>b.onclick=()=>replacePlanExercise(Number(b.dataset.replace)));
- document.querySelectorAll("[data-detach]").forEach(b=>b.onclick=()=>detachExerciseGroup(Number(b.dataset.detach)))
-}
-function replacePlanExercise(i){
- const old=currentPlan.exercises[i];if(!old)return;
- const sourceIndexes=groupMethod(old.setTechnique)&&old.techniqueGroup?groupIndexesFor(i):[i];
- openExercisePicker(name=>{
-  const fresh=findExercise(name),keep={setTechnique:old.setTechnique,measureMode:old.measureMode,reps:old.reps,sets:old.sets,rest:old.rest,methodData:clone(old.methodData||{}),note:old.note,variant:"",perSide:old.perSide,linkedExerciseNames:clone(old.linkedExerciseNames||[]),techniqueGroup:old.techniqueGroup||null};
-  const replacement=normPlanEx({...fresh,...keep});applyCatalogDefaults(replacement);
-  configureReplacementDraft(i,sourceIndexes,replacement)
- },{exclude:new Set([old.name]),title:"Übung austauschen",detailAdd:true})
-}
-function configureReplacementDraft(i,sourceIndexes,draft){
- let methodScroll=0;
- const render=()=>{
-  openSheet(draft.name+" konfigurieren",`<div class="method-tabs" id="repMethodTabs">${METHOD_KEYS.map(k=>`<button class="chip ${draft.setTechnique===k?"active":""}" data-rep-method="${k}">${METHOD_LABEL[k]}</button>`).join("")}</div><div class="method-help">${esc(methodHelp(draft.setTechnique))}</div><div class="mode-switch"><button type="button" class="chip ${draft.measureMode!=="time"?"active":""}" id="repModeReps">Wiederholungen</button><button type="button" class="chip ${draft.measureMode==="time"?"active":""}" id="repModeTime">Zeit</button></div><div class="grid2"><div class="form-field"><label>SÄTZE</label><select id="repSets" class="field">${Array.from({length:10},(_,n)=>`<option ${Number(draft.sets)===n+1?"selected":""}>${n+1}</option>`).join("")}</select></div><div class="form-field"><label>PAUSE</label><select id="repRest" class="field">${[0,30,45,60,90,120,150,180,240,300].map(v=>`<option value="${v}" ${Number(draft.rest)===v?"selected":""}>${v?formatTime(v):"Keine"}</option>`).join("")}</select></div></div><div class="form-field"><label>${draft.measureMode==="time"?"ZEIT":"WDH.-VORGABE"}</label>${draft.measureMode==="time"?timePresetMarkup(draft,"rep"):methodRepConfigMarkup(draft,"rep")}</div>${(findExercise(draft.name).variants||[]).length?`<div class="form-field"><label>VARIANTE</label><select id="repVariant" class="field"><option value="">Standard</option>${(findExercise(draft.name).variants||[]).map(v=>`<option ${draft.variant===v?"selected":""}>${esc(v)}</option>`).join("")}</select></div>`:""}<div class="form-field"><label><input id="repPerSide" type="checkbox" ${draft.perSide?"checked":""}> Wiederholungen pro Seite</label></div>${existingEditMethodMarkup(draft,sourceIndexes.length)}<button id="repConfirm" class="primary" style="width:100%">Übernehmen</button>`,null,{replace:true});
-  requestAnimationFrame(()=>{const t=$("repMethodTabs");if(t)t.scrollLeft=methodScroll});
-  $("repRest").onchange=()=>{draft.rest=Number($("repRest").value)};$("repModeReps").onclick=()=>{draft.measureMode="reps";render()};
-  $("repModeTime").onclick=()=>{draft.measureMode="time";draft.timeSeconds=Math.max(15,Number(draft.timeSeconds)||60);render()};
-  document.querySelectorAll("[data-rep-method]").forEach(b=>b.onclick=()=>{methodScroll=$("repMethodTabs")?.scrollLeft||0;prepareDraftForTargetMethod(draft,b.dataset.repMethod,sourceIndexes.length);render()});
-  document.querySelectorAll("[data-rep-preset]").forEach(b=>b.onclick=()=>{draft.reps=b.dataset.repPreset;render()});
-  const repTimeWheel=$("repTimeWheel");if(repTimeWheel)repTimeWheel.onchange=()=>{draft.timeSeconds=Number(repTimeWheel.value);render()};
-  $("repConfirm").onclick=()=>{draft.sets=Number($("repSets").value);draft.rest=Number($("repRest").value);if($("repVariant"))draft.variant=$("repVariant").value;draft.perSide=!!$("repPerSide")?.checked;draft.methodData=draft.methodData||{};if($("cfgDrops"))draft.methodData.dropCount=Number($("cfgDrops").value)||2;if($("cfgDropPct"))draft.methodData.dropPercent=Number($("cfgDropPct").value)||20;if($("cfgGiantCount"))draft.methodData.giantCount=Number($("cfgGiantCount").value)||3;saveMethodRepConfig(draft,"rep");const validation=validateExerciseDraft(draft);if(validation)return toast(validation);if(methodNeedsPartners(draft.setTechnique)){beginExistingPartnerReplacement(sourceIndexes,draft,i);return}if(sourceIndexes.length>1){const preserved=sourceIndexes.map(idx=>clone(currentPlan.exercises[idx])),pos=sourceIndexes.indexOf(i);preserved[pos]=clone(draft);preserved.forEach(x=>{x.techniqueGroup=null;x.linkedExerciseNames=[];x.setTechnique="standard";x.methodData={};if(!x.reps||["20","30","20-30"].includes(String(x.reps)))x.reps="8-12"});commitAtomicPlanGroup(sourceIndexes,preserved,i);return}commitAtomicPlanGroup(sourceIndexes,[draft],i)}
- };
- render()
-}
-let planAddFlow=null;
-function cancelPlanAddFlow(){
- planAddFlow=null;sheetStack=[];currentSheetState=null;$("sheetWrap").classList.remove("rethink-entry-sheet");$("sheetWrap").classList.add("hidden")
-}
-function planAddTypes(all){return ["Alle",...orderedExerciseTypes(all)]}
-function planAddMuscles(all){return orderedMuscles(all)}
-function startPlanExerciseAddFlow(){
- planAddFlow={step:"picker",q:exercisePickerState.q||"",type:exercisePickerState.type||"Alle",muscles:new Set(exercisePickerState.muscles||[]),drafts:[],history:[],methodScroll:0};
- renderPlanAddPicker()
-}
-function planAddFiltered(){
- const all=allExercises(),f=planAddFlow,used=new Set((f?.drafts||[]).map(x=>x.name));
- return all.filter(x=>!used.has(x.name)&&(f.type==="Alle"||(x.categories||[x.category]).includes(f.type))&&(!f.muscles.size||[...f.muscles].every(m=>(x.muscles||[]).includes(m)))&&(!f.q||[x.name,...(x.equipment||[]),...(x.variants||[])].join(" ").toLowerCase().includes(f.q))).sort(groupedExerciseSort)
-}
-function renderPlanAddPicker(){
- if(!planAddFlow)return;
- const f=planAddFlow,all=allExercises(),rows=planAddFiltered(),types=planAddTypes(all),ms=planAddMuscles(all);
- f.step="picker";
- renderSheetState({title:f.drafts.length?"Weitere Übung auswählen":"Übung hinzufügen",scroll:Number(f.pickerScroll)||0,body:`<div class="search"><input id="planAddSearch" class="field" placeholder="Übung suchen" value="${esc(f.q)}"><button id="planAddClear">×</button></div><div class="chips" id="paTypeChips">${types.map(x=>`<button class="chip ${f.type===x?"active":""}" data-pa-type="${esc(x)}">${esc(x)}</button>`).join("")}</div><div class="chips" id="paMuscleChips">${ms.map(x=>`<button class="chip ${(x==="Alle"&&!f.muscles.size)||f.muscles.has(x)?"active":""}" data-pa-muscle="${esc(x)}">${esc(x)}</button>`).join("")}</div><div class="small" id="planAddCount" style="margin:2px 0 8px">${rows.length} Übungen</div><div id="planAddRows">${planAddRowsMarkup(rows)}</div>`});
- const search=$("planAddSearch");
- const refresh=()=>{const rows=planAddFiltered();$("planAddCount").textContent=`${rows.length} Übungen`;$("planAddRows").innerHTML=planAddRowsMarkup(rows);bindPlanAddRows()};
- search.oninput=()=>{f.q=search.value.toLowerCase();exercisePickerState.q=f.q;refresh()};
- $("planAddClear").onclick=()=>{f.q="";search.value="";exercisePickerState.q="";refresh();search.focus()};
- requestAnimationFrame(()=>{if($("paTypeChips"))$("paTypeChips").scrollLeft=Number(f.typeScroll)||0;if($("paMuscleChips"))$("paMuscleChips").scrollLeft=Number(f.muscleScroll)||0;$("sheetBody").scrollTop=Number(f.pickerScroll)||0});
- document.querySelectorAll("[data-pa-type]").forEach(b=>b.onclick=()=>{f.pickerScroll=$("sheetBody").scrollTop||0;f.typeScroll=$("paTypeChips")?.scrollLeft||0;f.muscleScroll=$("paMuscleChips")?.scrollLeft||0;f.type=(f.type===b.dataset.paType&&f.type!=="Alle")?"Alle":b.dataset.paType;exercisePickerState.type=f.type;renderPlanAddPicker()});
- document.querySelectorAll("[data-pa-muscle]").forEach(b=>b.onclick=()=>{f.pickerScroll=$("sheetBody").scrollTop||0;f.typeScroll=$("paTypeChips")?.scrollLeft||0;f.muscleScroll=$("paMuscleChips")?.scrollLeft||0;const m=b.dataset.paMuscle;if(m==="Alle")f.muscles.clear();else f.muscles.has(m)?f.muscles.delete(m):f.muscles.add(m);exercisePickerState.muscles=[...f.muscles];renderPlanAddPicker()});
- bindPlanAddRows()
-}
-function planAddRowsMarkup(rows){
- return rows.map(e=>{const meta=[(e.categories||[]).join(" · "),(e.muscles||[]).join(", ")].filter(Boolean).join(" · ");return `<div class="exercise-card picker-quick-card"><button class="picker-info" type="button" data-pa-info="${esc(e.name)}"><div><strong>${esc(e.name)}</strong><small>${esc(meta)}</small></div></button><button class="picker-quick-add" type="button" data-pa-pick="${esc(e.name)}" aria-label="${esc(e.name)} hinzufügen">+</button></div>`}).join("")
-}
-function bindPlanAddRows(){
- document.querySelectorAll("[data-pa-pick]").forEach(b=>b.onclick=()=>beginPlanAddConfig(b.dataset.paPick,"picker"));
- document.querySelectorAll("[data-pa-info]").forEach(b=>b.onclick=()=>renderPlanAddDetail(b.dataset.paInfo))
-}
-function renderPlanAddDetail(name){
- if(!planAddFlow)return;planAddFlow.step="detail";planAddFlow.detailName=name;const e=findExercise(name);
- const variantHtml=(e.variants||[]).length?`<div class="detail-section"><div class="small">VARIANTEN</div><div class="detail-chip-row">${e.variants.map(v=>`<span class="detail-chip">${esc(v)}</span>`).join("")}</div></div>`:"";
- const equipmentHtml=(e.equipment||[]).length?`<div class="detail-section"><div class="small">HILFSMITTEL / GERÄT</div><div class="detail-chip-row">${e.equipment.map(v=>`<span class="detail-chip">${esc(v)}</span>`).join("")}</div></div>`:"";
- renderSheetState({title:name,scroll:0,body:`<div class="detail-section"><div class="small">TRAININGSART</div><strong>${esc(e.category||e.categories?.[0]||"—")}</strong></div><div class="detail-section"><div class="small">BEREICHE</div><strong>${esc((e.muscles||[]).join(", ")||"—")}</strong></div>${variantHtml}${equipmentHtml}${e.custom?"":`<div class="detail-copy"><h2>Ausführung</h2><p>${esc(executionText(e))}</p></div>`}<button id="planAddFromDetail" class="primary" style="width:100%;margin-top:12px">+ Zum Plan</button>`});
- $("planAddFromDetail").onclick=()=>beginPlanAddConfig(name,"detail")
-}
-function beginPlanAddConfig(name,from="picker",seed=null){
- if(!planAddFlow)return;
- const draft=seed?clone(seed):normPlanEx(applyStandardExerciseDefaults({...findExercise(name),setTechnique:"standard"}));
- planAddFlow.current=draft;planAddFlow.from=from;planAddFlow.step="config";
- renderPlanAddConfig()
-}
-function nearestSetCount(method,value){const n=Number(value);return Number.isInteger(n)&&n>=1&&n<=10?n:(METHOD_DEFAULT_SETS[method]||3)}
-function setOptionsMarkup(e){e.sets=nearestSetCount(e.setTechnique||"standard",e.sets);return Array.from({length:10},(_,i)=>i+1).map(n=>`<option value="${n}" ${Number(e.sets)===n?"selected":""}>${n}</option>`).join("")}
-function capturePlanAddStateV6(){
- const e=planAddFlow?.current;if(!e)return;
- if($("paSets"))e.sets=Number($("paSets").value)||e.sets;
- if($("paRest"))e.rest=Number($("paRest").value);
- captureExerciseOptionFields(e,"pa");
- if($("paPerSide"))e.perSide=!!$("paPerSide").checked;
- if(e.setTechnique==="pyramid")saveMethodRepConfig(e,"pa")
-}
-function bindPyramidCascade(e,prefix,rerender){
- if(e.setTechnique!=="pyramid")return;ensurePyramidData(e);
- (e.methodData.reps||[]).forEach((_,i)=>{const inp=$(`${prefix}PyrRep${i}`);if(!inp)return;inp.onchange=()=>{const val=Math.max(1,Math.min(30,Number(inp.value)||e.methodData.reps[i]||1));e.methodData.reps[i]=val;inp.value=String(val);e.methodData.weightPct=pyramidPctForSets(e.methodData.reps.length,e.methodData.reps);const pct=inp.parentElement?.querySelector("span:last-child");if(pct)pct.textContent=`${e.methodData.weightPct[i]}%`}})
-}
-function renderPlanAddConfig(){
-  if(!planAddFlow?.current)return;const e=planAddFlow.current;if(!methodAllowsTime(e.setTechnique))e.measureMode='reps';if(e.setTechnique==='pyramid')ensurePyramidData(e);if(e.measureMode==='time'&&!Number(e.timeSeconds))e.timeSeconds=60;e.sets=nearestSetCount(e.setTechnique||'standard',e.sets);
-  renderSheetState({title:e.name,scroll:0,body:`<div class="method-tabs" id="paMethodTabs">${METHOD_KEYS.map(k=>`<button class="chip ${e.setTechnique===k?'active':''}" data-pa-method="${k}">${METHOD_LABEL[k]}</button>`).join('')}</div><div class="method-help">${esc(methodHelp(e.setTechnique))}</div><div class="mode-switch"><button type="button" class="chip ${e.measureMode!=='time'?'active':''}" id="paModeReps">Wiederholungen</button><button type="button" class="chip ${e.measureMode==='time'?'active':''}" id="paModeTime" ${methodAllowsTime(e.setTechnique)?'':'disabled'}>Zeit</button></div><div class="grid2"><div class="form-field"><label>SÄTZE</label><select id="paSets" class="field">${setOptionsMarkup(e)}</select></div><div class="form-field"><label>PAUSE</label><select id="paRest" class="field">${[0,30,45,60,90,120,150,180,240,300].map(v=>`<option value="${v}" ${Number(e.rest)===v?'selected':''}>${v?formatTime(v):'Keine'}</option>`).join('')}</select></div></div><div class="form-field"><label>${e.measureMode==='time'?'ZEIT':'WDH.-VORGABE'}</label>${e.measureMode==='time'?timePresetMarkup(e,'pa'):methodRepConfigMarkup(e,'pa')}</div>${exerciseOptionFieldsMarkup(e,"pa")}${perSideFieldMarkup(e,"paPerSide")}${planAddMethodExtra(e)}<button id="paConfirm" class="primary" style="width:100%">Übernehmen</button>`});
-  requestAnimationFrame(()=>{const tabs=$('paMethodTabs');if(tabs)tabs.scrollLeft=planAddFlow.methodScroll||0});
-  $('paModeReps').onclick=()=>{capturePlanAddStateV6();e.measureMode='reps';renderPlanAddConfig()};
-  if($('paModeTime')&&!$('paModeTime').disabled)$('paModeTime').onclick=()=>{capturePlanAddStateV6();e.measureMode='time';e.timeSeconds=Math.min(timeMaxForExercise(e),Math.max(15,Number(e.timeSeconds)||60));renderPlanAddConfig()};
-  document.querySelectorAll('[data-pa-method]').forEach(b=>b.onclick=()=>{capturePlanAddStateV6();const tabs=$('paMethodTabs');planAddFlow.methodScroll=tabs?.scrollLeft||0;if(planAddFlow.memberGroup)planAddFlow.memberMethodExplicit=true;prepareDraftForTargetMethod(e,b.dataset.paMethod,1);renderPlanAddConfig()});
-  if($('paRest'))$('paRest').onchange=()=>{e.rest=Number($('paRest').value)};
-  $('paSets').onchange=()=>{capturePlanAddStateV6();const next=Number($('paSets').value);if(e.setTechnique==='pyramid')resizePyramidForSetCount(e,next);else e.sets=next;renderPlanAddConfig()};
-  document.querySelectorAll('[data-rep-preset]').forEach(b=>b.onclick=()=>{
-    const variant=$('paVariant')?.value??e.variant??'',equipment=$('paEquipment')?.value??e.equipmentChoice??'';
-    capturePlanAddStateV6();
-    e.variant=variant;e.equipmentChoice=equipment;
-    if($('paVariant'))e._variantExplicit=true;
-    if($('paEquipment'))e._equipmentExplicit=true;
-    e.reps=b.dataset.repPreset;document.querySelectorAll('[data-rep-preset]').forEach(x=>x.classList.toggle('active',x===b))
-  });
-  document.querySelectorAll('[data-time-preset]').forEach(b=>b.onclick=()=>{capturePlanAddStateV6();e.timeSeconds=Number(b.dataset.timePreset);document.querySelectorAll('[data-time-preset]').forEach(x=>x.classList.toggle('active',x===b));const wheel=$('paTimeWheel');if(wheel)wheel.value=String(e.timeSeconds)});
-  bindPyramidCascade(e,'pa',renderPlanAddConfig);
-  if($('paGiantCount'))$('paGiantCount').onchange=()=>{
-    e.methodData=e.methodData||{};e.methodData.giantCount=Number($('paGiantCount').value)||3;
-    if(planAddFlow.group&&planAddFlow.group.method==='giant')planAddFlow.group.target=e.methodData.giantCount
-  };
-  $('paConfirm').onclick=()=>{
-    e.methodData=e.methodData||{};
-    if($('paGiantCount')){e.methodData.giantCount=Number($('paGiantCount').value)||3;if(planAddFlow.group&&planAddFlow.group.method==='giant')planAddFlow.group.target=e.methodData.giantCount}
-    if($('paClusterBlocks'))e.methodData.blocks=Number($('paClusterBlocks').value)||4;
-    if($('paIntraRest'))e.methodData.intraRest=Number($('paIntraRest').value)||20;
-    confirmPlanAddDraft()
-  }
- };
-function defaultPyramidReps(sets=5){
- const templates={
-  1:[8],
-  2:[10,8],
-  3:[10,8,10],
-  4:[12,10,8,10],
-  5:[12,10,8,10,12],
-  6:[14,12,10,8,10,12],
-  7:[14,12,10,8,10,12,14],
-  8:[18,14,12,10,8,10,12,14],
-  9:[18,14,12,10,8,10,12,14,18]
- };
- return (templates[sets]||templates[9].slice(0,sets)).slice()
-}
-function pyramidPctForReps(reps){
- const r=Math.max(1,Math.round(Number(reps)||8));
- const chart={1:100,2:95,3:93,4:90,5:87,6:85,7:83,8:80,9:77,10:75,11:72,12:70};
- if(chart[r])return chart[r];
- if(r<=15)return 67;
- if(r<=20)return 60;
- return 55
-}
-function pyramidPctForSets(sets,reps){
- const rs=Array.isArray(reps)?reps:defaultPyramidReps(sets);
- return Array.from({length:sets},(_,i)=>pyramidPctForReps(rs[i]??8))
-}
-function resizePyramidReps(old,sets){
- old=Array.isArray(old)?old.map(Number).filter(Number.isFinite):[];
- if(!old.length)return defaultPyramidReps(sets);
- if(old.length===sets)return old;
- // Preserve all manually entered values. New sets extend at the outside.
- let arr=old.slice();
- while(arr.length<sets){
-  const edge=Math.max(Number(arr[0])||0,Number(arr[arr.length-1])||0);
-  const next=edge>=14?18:edge>=12?14:edge+2;
-  if(arr.length+2<=sets)arr=[next,...arr,next];
-  else arr.push(next)
- }
- while(arr.length>sets){
-  if(arr.length-2>=sets)arr=arr.slice(1,-1);
-  else arr=arr.slice(0,sets)
- }
- return arr
-}
-function ensurePyramidData(e){
- e.methodData=e.methodData||{};
- const sets=Math.max(1,Number(e.sets)||5);
- e.methodData.reps=resizePyramidReps(e.methodData.reps,sets);
- e.methodData.weightPct=pyramidPctForSets(sets,e.methodData.reps)
-}
-function methodRepConfigMarkup(e,prefix){
- if(e.setTechnique==="cluster"){e.methodData=e.methodData||{};const blocks=Math.max(2,Number(e.methodData.blocks)||4),cr=Math.max(1,Number(e.methodData.clusterReps)||2),ir=Math.max(5,Number(e.methodData.intraRest)||20);return`<div class="cluster-config-summary"><strong>${blocks} Cluster × ${cr} WDH.</strong><span>${ir}s Intra-Pause · alle Cluster gleich groß</span></div>`}
- if(e.setTechnique==="pyramid"){ensurePyramidData(e);return`<div class="pyramid-config"><div class="small">WDH. JE SATZ</div>${e.methodData.reps.map((r,i)=>`<div class="pyramid-config-row"><span>Satz ${i+1}</span><input id="${prefix}PyrRep${i}" class="field" inputmode="numeric" value="${r}"><span>${e.methodData.weightPct[i]}%</span></div>`).join("")}</div>`}
- if(e.setTechnique==="backoff"){e.methodData=e.methodData||{};const top=Number(e.methodData.topReps)||5,back=Math.max(top+1,Number(e.methodData.backoffReps)||8),pct=Number(e.methodData.backoffPercent)||15;return`<div class="grid2"><div class="form-field"><label>TOP-SATZ WDH.</label><select id="${prefix}TopReps" class="field">${Array.from({length:10},(_,i)=>i+1).map(n=>`<option ${n===top?"selected":""}>${n}</option>`).join("")}</select></div><div class="form-field"><label>BACK-OFF WDH.</label><select id="${prefix}BackReps" class="field">${[6,7,8,9,10,11,12].filter(n=>n>top).map(n=>`<option ${n===back?"selected":""}>${n}</option>`).join("")}</select></div></div><div class="form-field"><label>GEWICHT REDUZIEREN %</label><select id="${prefix}BackPct" class="field">${[5,10,15,20,25,30].map(n=>`<option ${n===pct?"selected":""}>${n}</option>`).join("")}</select></div>`}
- return repPresetMarkup(e)
-}
-function saveMethodRepConfig(e,prefix){
- e.methodData=e.methodData||{};
- if(e.setTechnique==="pyramid"){ensurePyramidData(e);e.methodData.reps=e.methodData.reps.map((_,i)=>Math.max(1,Number($(`${prefix}PyrRep${i}`)?.value)||e.methodData.reps[i]));e.methodData.weightPct=pyramidPctForSets(e.methodData.reps.length,e.methodData.reps)}
- if(e.setTechnique==="backoff"){e.methodData.topReps=Math.max(1,Number($(`${prefix}TopReps`)?.value)||5);e.methodData.backoffReps=Math.min(12,Math.max(e.methodData.topReps+1,Number($(`${prefix}BackReps`)?.value)||8));e.methodData.backoffPercent=Math.max(0,Number($(`${prefix}BackPct`)?.value)||15)}
-}
-function planAddMethodExtra(e){
- if(e.setTechnique==="giant"){const c=Math.max(3,Number(e.methodData?.giantCount)||3);return`<div class="form-field"><label>ANZAHL ÜBUNGEN</label><select id="paGiantCount" class="field">${[3,4,5,6].map(n=>`<option ${c===n?"selected":""}>${n}</option>`).join("")}</select></div>`}
- if(e.setTechnique==="dropset")return`<div class="grid2"><div class="form-field"><label>DROPS</label><select id="paDrops" class="field">${[1,2,3,4].map(n=>`<option ${Number(e.methodData?.dropCount||2)===n?"selected":""}>${n}</option>`).join("")}</select></div><div class="form-field"><label>REDUKTION %</label><select id="paDropPct" class="field">${[10,15,20,25,30].map(n=>`<option ${Number(e.methodData?.dropPercent||20)===n?"selected":""}>${n}</option>`).join("")}</select></div></div>`;
- if(e.setTechnique==="cluster")return`<div class="grid2"><div class="form-field"><label>CLUSTER</label><select id="paClusterBlocks" class="field">${[2,3,4,5,6,7,8].map(n=>`<option ${Number(e.methodData?.blocks||4)===n?"selected":""}>${n}</option>`).join("")}</select></div><div class="form-field"><label>WDH. PRO CLUSTER</label><select id="paClusterReps" class="field">${[1,2,3,4,5,6].map(n=>`<option ${Number(e.methodData?.clusterReps||2)===n?"selected":""}>${n}</option>`).join("")}</select></div></div><div class="form-field"><label>INTRA-PAUSE</label><select id="paIntraRest" class="field">${[10,15,20,25,30,45,60].map(n=>`<option value="${n}" ${Number(e.methodData?.intraRest||20)===n?"selected":""}>${n}s</option>`).join("")}</select></div>`;
- if(e.setTechnique==="restpause")return`<div class="form-field"><label>REST-PAUSE PAUSE</label><select id="paIntraRest" class="field">${[10,15,20,30].map(n=>`<option value="${n}" ${Number(e.methodData?.intraRest||20)===n?"selected":""}>${n}s</option>`).join("")}</select></div>`;
- return""
-}
-function savePlanAddFormToDraft(){
- const e=planAddFlow.current;e.sets=Number($("paSets").value);e.rest=Number($("paRest").value);captureExerciseOptionFields(e,"pa");if($("paPerSide"))e.perSide=!!$("paPerSide").checked;e.methodData=e.methodData||{};
- if($("paGiantCount"))e.methodData.giantCount=Number($("paGiantCount").value)||3;
- if($("paDrops"))e.methodData.dropCount=Number($("paDrops").value)||2;
- if($("paDropPct"))e.methodData.dropPercent=Number($("paDropPct").value)||20;if($("paClusterBlocks"))e.methodData.blocks=Number($("paClusterBlocks").value)||4;if($("paClusterReps"))e.methodData.clusterReps=Number($("paClusterReps").value)||2;if(e.setTechnique==="cluster")e.reps="";if($("paIntraRest"))e.methodData.intraRest=Number($("paIntraRest").value)||20;saveMethodRepConfig(e,"pa")
-}
-
-function partnerCatalogRows(rows){
- return rows.map(x=>`<div class="exercise-card picker-quick-card"><button class="picker-info" type="button" data-partner-info="${esc(x.name)}"><div><strong>${esc(x.name)}</strong><small>${esc(x.category||x.categories?.[0]||"")} · ${esc((x.muscles||[]).join(", "))}</small></div></button><button class="picker-quick-add" type="button" data-partner-pick="${esc(x.name)}" aria-label="${esc(x.name)} hinzufügen">+</button></div>`).join("")
-}
-function renderPartnerExerciseDetail(name){
- const f=planAddFlow;if(!f?.group)return;const e=findExercise(name);f.partnerPickerScroll=$("sheetBody")?.scrollTop||Number(f.partnerPickerScroll)||0;
- renderSheetState({title:name,scroll:0,body:`<div class="detail-section"><div class="small">TRAININGSART</div><strong>${esc(e.category||e.categories?.[0]||"—")}</strong></div><div class="detail-section"><div class="small">BEREICHE</div><strong>${esc((e.muscles||[]).join(", ")||"—")}</strong></div>${e.custom?"":`<div class="detail-copy"><h2>Ausführung</h2><p>${esc(executionText(e))}</p></div>`}<button id="partnerDetailAdd" class="primary" style="width:100%">Als Übung ${String.fromCharCode(65+f.drafts.length)} wählen</button>`,onBack:renderPartnerExercisePicker,onClose:cancelPlanAddFlow});
- $("partnerDetailAdd").onclick=()=>startCompactPartnerConfig(name)
-}
-function bindPartnerCatalogRows(){
- document.querySelectorAll("[data-partner-pick]").forEach(b=>b.onclick=()=>startCompactPartnerConfig(b.dataset.partnerPick));
- document.querySelectorAll("[data-partner-info]").forEach(b=>b.onclick=()=>renderPartnerExerciseDetail(b.dataset.partnerInfo))
-}
-function renderPartnerExercisePicker(){
- const f=planAddFlow;if(!f?.group)return renderPlanAddPicker();
- const all=allExercises(),rows=planAddFiltered(),types=planAddTypes(all),muscles=planAddMuscles(all);f.step="partnerPicker";
- const letter=String.fromCharCode(65+f.drafts.length),method=METHOD_LABEL[f.group.method]||f.group.method;
- renderSheetState({title:`${method} · Übung ${letter}`,scroll:Number(f.partnerPickerScroll)||0,body:`<div class="search"><input id="partnerSearch" class="field" placeholder="Übung suchen" value="${esc(f.q||"")}"><button id="partnerClear">×</button></div><div class="chips" id="partnerTypeChips">${types.map(x=>`<button class="chip ${f.type===x?"active":""}" data-partner-type="${esc(x)}">${esc(x)}</button>`).join("")}</div><div class="chips" id="partnerMuscleChips">${muscles.map(x=>`<button class="chip ${(x==="Alle"&&!f.muscles.size)||f.muscles.has(x)?"active":""}" data-partner-muscle="${esc(x)}">${esc(x)}</button>`).join("")}</div><div class="small" id="partnerCount" style="margin:2px 0 8px">${rows.length} Übungen</div><div id="partnerRows">${partnerCatalogRows(rows)}</div>`,onBack:()=>{if(f.drafts.length>1){const prev=f.drafts.pop();f.current=prev;renderCompactPartnerConfig()}else{f.current=f.drafts[0]||null;f.drafts=[];renderPlanAddConfig()}},onClose:cancelPlanAddFlow});
- const search=$("partnerSearch");const remember=()=>{f.partnerPickerScroll=$("sheetBody")?.scrollTop||0;f.partnerTypeScroll=$("partnerTypeChips")?.scrollLeft||0;f.partnerMuscleScroll=$("partnerMuscleChips")?.scrollLeft||0};
- const refresh=()=>{const r=planAddFiltered();$("partnerCount").textContent=`${r.length} Übungen`;$("partnerRows").innerHTML=partnerCatalogRows(r);bindPartnerCatalogRows()};
- search.oninput=()=>{f.q=search.value.toLowerCase();exercisePickerState.q=f.q;refresh()};$("partnerClear").onclick=()=>{f.q="";search.value="";exercisePickerState.q="";refresh();search.focus()};
- document.querySelectorAll("[data-partner-type]").forEach(b=>b.onclick=()=>{remember();f.type=(f.type===b.dataset.partnerType&&f.type!=="Alle")?"Alle":b.dataset.partnerType;exercisePickerState.type=f.type;renderPartnerExercisePicker()});
- document.querySelectorAll("[data-partner-muscle]").forEach(b=>b.onclick=()=>{remember();const m=b.dataset.partnerMuscle;if(m==="Alle")f.muscles.clear();else f.muscles.has(m)?f.muscles.delete(m):f.muscles.add(m);exercisePickerState.muscles=[...f.muscles];renderPartnerExercisePicker()});
- bindPartnerCatalogRows();requestAnimationFrame(()=>{if($("partnerTypeChips"))$("partnerTypeChips").scrollLeft=Number(f.partnerTypeScroll)||0;if($("partnerMuscleChips"))$("partnerMuscleChips").scrollLeft=Number(f.partnerMuscleScroll)||0;if($("sheetBody"))$("sheetBody").scrollTop=Number(f.partnerPickerScroll)||0})
-}
-function startCompactPartnerConfig(name,seed=null,order=null){
- const master=planAddFlow.drafts[0],base=seed?clone(seed):normPlanEx({...findExercise(name),sets:master.sets||3,rest:restSeconds(master,90)});
- if(!seed)prepareDraftForTargetMethod(base,planAddFlow.group.method,planAddFlow.group.target);
- else{base.setTechnique=planAddFlow.group.method;base.techniqueGroup=planAddFlow.group.id;if(!base.reps)base.reps=defaultRepsForMethod(planAddFlow.group.method)}
- // Connected methods are structurally controlled by exercise A. Partner cards may change
- // their own reps/time/variant/equipment, but never the group's set count or pause.
- base.sets=Number(master.sets)||3;base.rest=Number(master.rest)||0;base.techniqueGroup=planAddFlow.group.id;
- const resolvedOrder=order!=null?Number(order):planAddFlow.drafts.length;
- base._draftOrder=resolvedOrder;base.groupPosition=resolvedOrder;
- if(Array.isArray(planAddFlow.editSourceIndexes)&&order==null)planAddFlow.nextOrder=resolvedOrder+1;
- planAddFlow.current=base;planAddFlow.step="partnerConfig";renderCompactPartnerConfig()
-}
-function advancePartnerDraftFlow(){
- const f=planAddFlow;if(!f?.group)return;
- if(f.drafts.length>=f.group.target){const master=f.drafts[0];f.drafts.forEach(d=>{d.setTechnique=f.group.method;d.techniqueGroup=f.group.id;d.sets=Number(master.sets)||3;d.rest=Number(master.rest)||0});commitPlanAddFlow();return}
- if(Array.isArray(f.pendingSeeds)&&f.pendingSeeds.length){const next=f.pendingSeeds.shift();startCompactPartnerConfig(next.exercise.name,next.exercise,next.order);return}
- renderPartnerExercisePicker()
-}
-function partnerConfigCardsMarkup(){
- const f=planAddFlow,method=f.group.method,master=f.drafts[0]||f.current;
- const items=[...(f.drafts||[]).map(clone)];
- if(f.current)items.push(clone(f.current));
- return `<div class="method-card method-${method} connected-method-card partner-config-stack">
-   <div class="method-name">${METHOD_LABEL[method]}</div>
-   <div class="method-help">${esc(methodHelp(method))}</div>
-   ${items.map((x,j)=>`<div class="editor-group-exercise partner-full-card ${j===items.length-1&&f.current?'partner-current':''}">
-     <div class="space"><strong><span class="group-letter">${String.fromCharCode(65+j)}</span> ${esc(exerciseDisplayName(x))}</strong><span class="small">${j===0?'Vorgabe':'Partner'}</span></div>
-     ${exerciseInlineMeta(x)}
-     <div class="editor-ex-meta"><span class="meta-pill">${Number(master?.sets||3)} ${Number(master?.sets||3)===1?'Satz':'Sätze'}</span><span class="meta-pill">${x.measureMode==='time'?formatTime(x.timeSeconds||60):(amrapText(x.reps||'8-12')+(amrapText(x.reps||'')==='AMRAP'?'':' WDH.'))}</span><span class="meta-pill">${formatTime(restSeconds(master,90))} Gruppenpause</span></div>
-   </div>`).join('')}
- </div>`
-}
-function renderCompactPartnerConfig(){
- const e=planAddFlow.current,method=planAddFlow.group.method,master=planAddFlow.drafts[0];
- e.sets=Number(master?.sets)||3;e.rest=Number(master?.rest)||0;
- const letter=String.fromCharCode(65+Number(e.groupPosition??planAddFlow.drafts.length));if(e.measureMode==="time"&&!Number(e.timeSeconds))e.timeSeconds=60;
- renderSheetState({title:`Übung ${letter} · ${e.name}`,scroll:Number(planAddFlow.partnerConfigScroll)||0,body:`<div class="method-tabs" id="partnerMethodTabs">${METHOD_KEYS.map(k=>`<button type="button" class="chip ${k===method?"active":""}" disabled>${METHOD_LABEL[k]}</button>`).join("")}</div><div class="method-help">${esc(methodHelp(method))}</div><div class="mode-switch"><button type="button" class="chip ${e.measureMode!=="time"?"active":""}" id="partnerModeReps">Wiederholungen</button><button type="button" class="chip ${e.measureMode==="time"?"active":""}" id="partnerModeTime" ${methodAllowsTime(method)?"":"disabled"}>Zeit</button></div><div class="form-field"><label>${e.measureMode==="time"?"ZEIT":"WDH.-VORGABE"}</label>${e.measureMode==="time"?timePresetMarkup(e,"partner"):methodRepConfigMarkup(e,"partner")}</div>${exerciseOptionFieldsMarkup(e,"partner")}${perSideFieldMarkup(e,"partnerPerSide")}<button id="partnerReplaceChoice" class="secondary" style="width:100%;margin-bottom:8px">⇄ Diese Übung austauschen</button><button id="partnerConfirm" class="primary" style="width:100%">Übung übernehmen</button>`,onBack:renderPartnerExercisePicker,onClose:cancelPlanAddFlow});
- const body=$("sheetBody");requestAnimationFrame(()=>{if(body)body.scrollTop=Number(planAddFlow.partnerConfigScroll)||0});
- const remember=()=>{planAddFlow.partnerConfigScroll=body?.scrollTop||0};const capture=()=>{captureExerciseOptionFields(e,"partner");if($("partnerPerSide"))e.perSide=!!$("partnerPerSide").checked;saveMethodRepConfig(e,"partner")};
- $("partnerModeReps").onclick=()=>{remember();capture();e.measureMode="reps";renderCompactPartnerConfig()};if($("partnerModeTime")&&!$("partnerModeTime").disabled)$("partnerModeTime").onclick=()=>{remember();capture();e.measureMode="time";e.timeSeconds=Math.max(15,Number(e.timeSeconds)||60);renderCompactPartnerConfig()};
- document.querySelectorAll("[data-rep-preset]").forEach(b=>b.onclick=()=>{e.reps=b.dataset.repPreset;document.querySelectorAll("[data-rep-preset]").forEach(x=>x.classList.toggle("active",x===b))});const wheel=$("partnerTimeWheel");if(wheel)wheel.onchange=()=>{e.timeSeconds=Number(wheel.value)};bindPyramidCascade(e,"partner",()=>{});
- $("partnerReplaceChoice").onclick=()=>{remember();capture();renderPartnerExercisePicker()};
- $("partnerConfirm").onclick=()=>{remember();capture();e.sets=Number(master?.sets)||3;e.rest=Number(master?.rest)||0;const validation=validateExerciseDraft(e);if(validation)return toast(validation);const copy=clone(e);copy.setTechnique=method;copy.techniqueGroup=planAddFlow.group.id;copy.sets=Number(master?.sets)||3;copy.rest=Number(master?.rest)||0;copy._draftOrder=Number(e._draftOrder??planAddFlow.drafts.length);copy.groupPosition=copy._draftOrder;planAddFlow.drafts.push(copy);planAddFlow.current=null;planAddFlow.partnerConfigScroll=0;advancePartnerDraftFlow()}
-}
-
-function confirmPlanAddDraft(){
- if(!planAddFlow?.current)return;
- savePlanAddFormToDraft();
- const validation=validateExerciseDraft(planAddFlow.current);if(validation)return toast(validation);
- const e=clone(planAddFlow.current),method=e.setTechnique||"standard";
- if(methodNeedsPartners(method)){
-  const selectedTarget=method==="giant"
-    ? Math.min(6,Math.max(3,Number($("paGiantCount")?.value||e.methodData?.giantCount||planAddFlow.group?.target||3)))
-    : 2;
-  e.methodData=e.methodData||{};
-  if(method==="giant")e.methodData.giantCount=selectedTarget;
-  if(!planAddFlow.group){
-    planAddFlow.group={id:`tg_${uid()}`,method,target:selectedTarget};
-  }else{
-    planAddFlow.group.method=method;
-    if(method==="giant")planAddFlow.group.target=selectedTarget
-  }
-  e.techniqueGroup=planAddFlow.group.id;
-  if(!Array.isArray(planAddFlow.editSourceIndexes)&&!Number.isFinite(Number(e._draftOrder)))e._draftOrder=planAddFlow.drafts.length;
-  planAddFlow.drafts.push(e);
-  if(planAddFlow.drafts.length<planAddFlow.group.target){
-    planAddFlow.current=null;renderPartnerExercisePicker();return
-  }
-  const master=planAddFlow.drafts[0],gid=planAddFlow.group.id;
-  planAddFlow.drafts.forEach(d=>{
-    d.setTechnique=planAddFlow.group.method;
-    d.techniqueGroup=gid;
-    d.sets=master.sets;
-    d.rest=master.rest
-  });
-  commitPlanAddFlow();return
- }
- planAddFlow.drafts.push(e);commitPlanAddFlow()
-}
-function commitPlanAddFlow(){
- if(!planAddFlow?.drafts?.length)return;
- let drafts=planAddFlow.drafts.map(clone);
- const detached=drafts.flatMap(d=>Array.isArray(d._detachedAfterConversion)?d._detachedAfterConversion.map(clone):[]);
- if(drafts.some(d=>Number.isFinite(Number(d._draftOrder))))drafts.sort((a,b)=>(Number.isFinite(Number(a._draftOrder))?Number(a._draftOrder):999)-(Number.isFinite(Number(b._draftOrder))?Number(b._draftOrder):999));
- drafts.forEach(d=>{delete d._draftOrder;delete d._detachedAfterConversion});
- detached.forEach(d=>{d.techniqueGroup=null;d.linkedExerciseNames=[];d.setTechnique="standard";d.methodData={};if(!d.reps||["20","30","20-30"].includes(String(d.reps)))d.reps="8-12";delete d.liveSets});
- const method=planAddFlow.group?.method||drafts[0]?.setTechnique||"standard",target=planAddFlow.group?.target||drafts.length; const validation=validateDraftCollection(drafts,method,target);if(validation)return toast(validation);
- const edited=Array.isArray(planAddFlow.editSourceIndexes)&&planAddFlow.editSourceIndexes.length,liveContext=planAddFlow.context==="live",collection=liveContext?activeWorkout.exercises:currentPlan.exercises;
- if(liveContext){
-   const oldByName=new Map(collection.map(x=>[x.name,clone(x.liveSets||[])]));
-   [...drafts,...detached].forEach(d=>{const old=oldByName.get(d.name)||[];d.liveSets=rebuildLiveSetsForExercise(d,old)});
- }
- if(edited){
-   const indexes=[...planAddFlow.editSourceIndexes].sort((a,b)=>a-b),insertAt=indexes[0];
-   [...indexes].sort((a,b)=>b-a).forEach(i=>collection.splice(i,1));
-   collection.splice(insertAt,0,...drafts,...detached)
- }else collection.push(...drafts);
- if(liveContext){markLiveStructureEdited();saveAll();renderLive()}else{markEditorDirty();renderEditorExercises();persistUI()}
- planAddFlow=null;sheetStack=[];currentSheetState=null;$("sheetWrap").classList.remove("rethink-entry-sheet");$("sheetWrap").classList.add("hidden");
- toast(edited?(drafts.length>1?"Serie übernommen":"Änderung übernommen"):(drafts.length>1?`${drafts.length} Übungen hinzugefügt`:"Übung hinzugefügt"))
-}
-function planAddBack(){
- if(!planAddFlow){closeSheet({all:false});return}
- if(planAddFlow.step==="config"){
-  // No commit: go back and allow a different exercise to be chosen.
-  planAddFlow.current=null;
-  if(planAddFlow.from==="detail"&&planAddFlow.detailName)renderPlanAddDetail(planAddFlow.detailName);else renderPlanAddPicker();
+$("planSaveBtn").onclick=()=>{
+ const st=planEditorState();
+ if(st.isNew){
+  if(saveCurrentPlan()){editorDirty=false;currentPlan=null;closePage();showTab("plans");renderPlans()}
   return
  }
- if(planAddFlow.step==="detail"){renderPlanAddPicker();return}
- if(planAddFlow.step==="partnerConfig"){planAddFlow.current=null;renderPartnerExercisePicker();return}
- if(planAddFlow.step==="partnerPicker"){if(planAddFlow.drafts.length){const prev=planAddFlow.drafts.pop();planAddFlow.current=prev;planAddFlow.step="config";renderPlanAddConfig();return}renderPlanAddPicker();return}
- if(planAddFlow.step==="picker"&&planAddFlow.drafts.length){
-  // Return to the previously confirmed draft and edit it before the whole group is committed.
-  const prev=planAddFlow.drafts.pop();planAddFlow.current=prev;planAddFlow.from="picker";planAddFlow.step="config";renderPlanAddConfig();return
- }
- cancelPlanAddFlow()
-}
-$("editorAddExerciseBtn").onclick=startPlanExerciseAddFlow;
-$("editorPreviewBtn").onclick=()=>openPreview(currentPlan);$("editorReorderBtn").onclick=()=>openReorderSheet();$("editorStartTrainingBtn").onclick=startCurrentEditorPlan;
-function reorderUnits(exercises){return editorVisualGroups(exercises).map(g=>({method:g.method,indexes:g.items.map(x=>x.i),label:g.items.map(x=>x.e.name).join(" + ")}))}
-function openReorderSheet(){const units=reorderUnits(currentPlan.exercises);openSheet("Reihenfolge ändern",units.map((u,ui)=>`<div class="exercise-card"><div><strong>${ui+1}. ${esc(u.label)}</strong>${u.indexes.length>1?`<small>${METHOD_LABEL[u.method]} · ${u.indexes.length} Übungen</small>`:""}</div><div class="row"><button class="icon-btn" data-unit-up="${ui}">↑</button><button class="icon-btn" data-unit-down="${ui}">↓</button></div></div>`).join(""));document.querySelectorAll("[data-unit-up]").forEach(b=>b.onclick=()=>movePlanUnit(Number(b.dataset.unitUp),-1));document.querySelectorAll("[data-unit-down]").forEach(b=>b.onclick=()=>movePlanUnit(Number(b.dataset.unitDown),1))}
-function movePlanUnit(ui,d){const units=reorderUnits(currentPlan.exercises),j=ui+d;if(j<0||j>=units.length)return;const chunks=units.map(u=>u.indexes.map(i=>currentPlan.exercises[i]));[chunks[ui],chunks[j]]=[chunks[j],chunks[ui]];currentPlan.exercises=chunks.flat();markEditorDirty();closeSheet({all:true});renderEditorExercises();openReorderSheet()}
-function normalizeGroupCollection(exercises,gid,structuralSource=null){
- const indexed=exercises.map((e,i)=>({e,i})).filter(x=>x.e.techniqueGroup===gid);if(!indexed.length)return;
- indexed.sort((a,b)=>{const ap=Number.isFinite(Number(a.e.groupPosition))?Number(a.e.groupPosition):a.i,bp=Number.isFinite(Number(b.e.groupPosition))?Number(b.e.groupPosition):b.i;return ap-bp||a.i-b.i});
- const members=indexed.map(x=>x.e);let method=members[0].setTechnique||"standard";
- // A Giant Set with one deleted member remains a valid connected pair and therefore becomes a Superset.
- // A connected pair with one further deletion becomes a normal Standard exercise.
- if(method==="giant"&&members.length===2)method="superset";
- const min=2;
- if(members.length<min){members.forEach(e=>{e.techniqueGroup=null;delete e.groupPosition;e.setTechnique="standard";e.methodData={};e.linkedExerciseNames=[];if(!e.reps||["20","30","20-30"].includes(String(e.reps)))e.reps="8-12"});return}
- // Shared structure always belongs to A. Editing B/C must not overwrite A's pause or sets.
- const master=members[0],sourceIsA=structuralSource===master;
- const structural=sourceIsA?structuralSource:master;
- const sharedSets=Math.max(1,Math.min(10,Number(structural.sets)||3)),sharedRest=Math.max(0,Number(structural.rest)||0);
- members.forEach((e,pos)=>{e.groupPosition=pos;e.setTechnique=method;e.techniqueGroup=gid;e.sets=sharedSets;e.rest=sharedRest;e.linkedExerciseNames=members.filter(x=>x!==e).map(x=>x.name);if(method==="giant"){e.methodData=e.methodData||{};e.methodData.giantCount=members.length}else if(e.methodData?.giantCount){e.methodData={...e.methodData};delete e.methodData.giantCount}})
-}
-function normalizeBrokenPlanGroupAfterDelete(removed){if(removed&&groupMethod(removed.setTechnique)&&removed.techniqueGroup)normalizeGroupCollection(currentPlan.exercises,removed.techniqueGroup)}
-function normalizeBrokenLiveGroupAfterDelete(removed){if(!removed||!groupMethod(removed.setTechnique)||!removed.techniqueGroup)return;normalizeGroupCollection(activeWorkout.exercises,removed.techniqueGroup);activeWorkout.exercises.forEach(e=>{if(e.techniqueGroup===removed.techniqueGroup||!e.techniqueGroup)e.liveSets=rebuildLiveSetsForExercise(e,e.liveSets||[])})}
-function methodNeedsPartners(m){return["superset","giant","preexhaust"].includes(m)}
-function methodAllowsTime(m){return["standard","superset","giant","preexhaust"].includes(m||"standard")}
-function methodMinPartners(m){return m==="giant"?2:1}
-function groupIndexesFor(index){
- const e=currentPlan.exercises[index];if(!e||!groupMethod(e.setTechnique)||!e.techniqueGroup)return[index];
- return currentPlan.exercises.map((x,i)=>x.techniqueGroup===e.techniqueGroup&&x.setTechnique===e.setTechnique?i:-1).filter(i=>i>=0)
-}
-function ensureTechniqueGroup(index,method){
- const e=currentPlan.exercises[index];
- if(!e.techniqueGroup)e.techniqueGroup=`tg_${uid()}`;
- e.setTechnique=method
-}
-function linkedMethodMarkup(e,index){
- const m=e.setTechnique||"standard";
- if(methodNeedsPartners(m)){
-   const count=groupIndexesFor(index).length,target=m==="giant"?Math.max(3,Number(e.methodData?.giantCount)||3):2;
-   return `<div class="method-link-box"><div class="method-config-note">${m==="giant"?`Giant Set mit ${target} Übungen. Jede Übung wird nacheinander in derselben Maske eingestellt.`:"Nach dem Speichern fügst du die zweite Übung hinzu und stellst ihre Parameter in derselben Maske ein."}</div>${m==="giant"?`<div class="form-field"><label>ANZAHL ÜBUNGEN</label><select id="cfgGiantCount" class="field">${[3,4,5,6].map(n=>`<option ${target===n?"selected":""}>${n}</option>`).join("")}</select></div>`:""}<div class="small">${count} von ${target} Übungen konfiguriert</div></div>`
- }
- if(m==="dropset")return`<div class="method-link-box"><div class="method-config-note">Drop Set bleibt dieselbe Übung. Nach dem Basissatz folgen direkte Gewichtsreduktionen.</div><div class="grid2"><div class="form-field"><label>DROPS</label><select id="cfgDrops" class="field">${[1,2,3,4].map(x=>`<option ${Number(e.methodData?.dropCount||2)===x?"selected":""}>${x}</option>`).join("")}</select></div><div class="form-field"><label>REDUKTION %</label><select id="cfgDropPct" class="field">${[10,15,20,25,30].map(x=>`<option ${Number(e.methodData?.dropPercent||20)===x?"selected":""}>${x}</option>`).join("")}</select></div></div></div>`;
- return""
-}
-function configureExercise(i,flow=null){
- let original=currentPlan.exercises[i];if(!original)return;
- const initialGroup=groupMethod(original.setTechnique)&&original.techniqueGroup?groupIndexesFor(i):[i];
- if(initialGroup.length>1&&i!==initialGroup[0]){i=initialGroup[0];original=currentPlan.exercises[i]}
- const originalGroup=groupMethod(original.setTechnique)&&original.techniqueGroup?groupIndexesFor(i):[i];
- const draft=clone(original);let methodScroll=0;
-
- const render=()=>{
-  $("sheetBody").innerHTML=`<div class="method-tabs" id="cfgMethodTabs">${METHOD_KEYS.map(k=>`<button class="chip ${draft.setTechnique===k?"active":""}" data-method="${k}">${METHOD_LABEL[k]}</button>`).join("")}</div>
-  <div class="method-help">${esc(methodHelp(draft.setTechnique))}</div>
-  <div class="mode-switch"><button type="button" class="chip ${draft.measureMode!=="time"?"active":""}" id="cfgModeReps">Wiederholungen</button><button type="button" class="chip ${draft.measureMode==="time"?"active":""}" id="cfgModeTime" ${methodAllowsTime(draft.setTechnique)?"":"disabled"}>Zeit</button></div>
-  <div class="grid2"><div class="form-field"><label>SÄTZE</label><select id="cfgSets" class="field">${Array.from({length:10},(_,n)=>`<option ${Number(draft.sets)===n+1?"selected":""}>${n+1}</option>`).join("")}</select></div><div class="form-field"><label>PAUSE</label><select id="cfgRest" class="field">${[0,30,45,60,90,120,150,180,240,300].map(v=>`<option value="${v}" ${Number(draft.rest)===v?"selected":""}>${v?formatTime(v):"Keine"}</option>`).join("")}</select></div></div>
-  <div class="form-field"><label>${draft.measureMode==="time"?"ZEIT":"WDH.-VORGABE"}</label>${draft.measureMode==="time"?timePresetMarkup(draft,"cfg"):methodRepConfigMarkup(draft,"cfg")}</div>
-  ${exerciseOptionFieldsMarkup(draft,"cfg")}
-  ${perSideFieldMarkup(draft,"cfgPerSide")}
-  ${existingEditMethodMarkup(draft,originalGroup.length)}
-  <button id="cfgSave" class="primary" style="width:100%">Übernehmen</button>`;
-  bind()
- };
- const bind=()=>{
-  requestAnimationFrame(()=>{const t=$("cfgMethodTabs");if(t)t.scrollLeft=methodScroll});
-  $("cfgRest").onchange=()=>{draft.rest=Number($("cfgRest").value)};$("cfgModeReps").onclick=()=>{captureVisibleExerciseConfig(draft,"cfg",{setsId:"cfgSets",restId:"cfgRest",perSideId:"cfgPerSide"});draft.measureMode="reps";render()};
-  $("cfgModeTime").onclick=()=>{if(!methodAllowsTime(draft.setTechnique))return;captureVisibleExerciseConfig(draft,"cfg",{setsId:"cfgSets",restId:"cfgRest",perSideId:"cfgPerSide"});draft.measureMode="time";draft.timeSeconds=Math.max(15,Number(draft.timeSeconds)||60);render()};
-  document.querySelectorAll("[data-method]").forEach(b=>b.onclick=()=>{
-    captureVisibleExerciseConfig(draft,"cfg",{setsId:"cfgSets",restId:"cfgRest",perSideId:"cfgPerSide"});methodScroll=$("cfgMethodTabs")?.scrollLeft||0;
-    const keepVariant=draft.variant,keepEquipment=draft.equipmentChoice,ve=draft._variantExplicit,ee=draft._equipmentExplicit;prepareDraftForTargetMethod(draft,b.dataset.method,originalGroup.length);if(!methodAllowsTime(draft.setTechnique))draft.measureMode="reps";draft.variant=keepVariant;draft.equipmentChoice=keepEquipment;draft._variantExplicit=ve;draft._equipmentExplicit=ee;applyCatalogDefaults(draft);
-    render()
-  });
-  const cfgTimeWheel=$("cfgTimeWheel");if(cfgTimeWheel)cfgTimeWheel.onchange=()=>{captureVisibleExerciseConfig(draft,"cfg",{setsId:"cfgSets",restId:"cfgRest",perSideId:"cfgPerSide"});draft.timeSeconds=Number(cfgTimeWheel.value);render()};
-  document.querySelectorAll("[data-rep-preset]").forEach(b=>b.onclick=()=>{
-   const variant=$("cfgVariant")?.value??draft.variant??"",equipment=$("cfgEquipment")?.value??draft.equipmentChoice??"";
-   captureVisibleExerciseConfig(draft,"cfg",{setsId:"cfgSets",restId:"cfgRest",perSideId:"cfgPerSide"});
-   draft.variant=variant;draft.equipmentChoice=equipment;
-   if($("cfgVariant"))draft._variantExplicit=true;
-   if($("cfgEquipment"))draft._equipmentExplicit=true;
-   draft.reps=b.dataset.repPreset;render()
-  });
-  $("cfgSave").onclick=()=>{
-    draft.sets=Number($("cfgSets").value);draft.rest=Number($("cfgRest").value);
-    captureExerciseOptionFields(draft,"cfg");
-    if($("cfgPerSide"))draft.perSide=!!$("cfgPerSide").checked;
-    draft.methodData=draft.methodData||{};
-    if($("cfgDrops"))draft.methodData.dropCount=Number($("cfgDrops").value)||2;
-    if($("cfgDropPct"))draft.methodData.dropPercent=Number($("cfgDropPct").value)||20;
-    if($("cfgGiantCount"))draft.methodData.giantCount=Number($("cfgGiantCount").value)||3;if($("liveCfgClusterBlocks"))draft.methodData.blocks=Number($("liveCfgClusterBlocks").value)||4;if($("liveCfgClusterReps"))draft.methodData.clusterReps=Number($("liveCfgClusterReps").value)||2;if(draft.setTechnique==="cluster")draft.reps="";if($("liveCfgIntraRest"))draft.methodData.intraRest=Number($("liveCfgIntraRest").value)||20;
-    saveMethodRepConfig(draft,"cfg");
-    const validation=validateExerciseDraft(draft);if(validation)return toast(validation);
-
-    if(methodNeedsPartners(draft.setTechnique)){
-      const target=draft.setTechnique==="giant"?(Number(draft.methodData?.giantCount)||3):2;
-      const sameGroup=originalGroup.length>1&&draft.setTechnique===original.setTechnique&&target===originalGroup.length;
-      if(sameGroup){
-        const preserved=originalGroup.map(idx=>clone(currentPlan.exercises[idx])),pos=originalGroup.indexOf(i),gid=original.techniqueGroup;preserved[pos]=clone(draft);
-        preserved.forEach(x=>{x.setTechnique=draft.setTechnique;x.techniqueGroup=gid;x.sets=Number(draft.sets)||3;x.rest=Number(draft.rest)||0;if(draft.setTechnique==="giant"){x.methodData=x.methodData||{};x.methodData.giantCount=target}});
-        commitAtomicPlanGroup(originalGroup,preserved,i);return
-      }
-      beginExistingPartnerReplacement(originalGroup,draft,i);return
-    }
-
-    if(originalGroup.length>1){
-      const preserved=originalGroup.map(idx=>clone(currentPlan.exercises[idx]));
-      const pos=originalGroup.indexOf(i);preserved[pos]=clone(draft);preserved.forEach(x=>{x.techniqueGroup=null;x.setTechnique="standard";x.linkedExerciseNames=[];if(!x.reps||["20","30","20-30"].includes(String(x.reps)))x.reps="8-12"});
-      commitAtomicPlanGroup(originalGroup,preserved,i);return
-    }
-    commitAtomicPlanGroup(originalGroup,[draft],i)
-  }
- };
- openSheet(original.name+" bearbeiten","");render()
-}
-
-function existingEditMethodMarkup(e,oldGroupCount=1){
- const m=e.setTechnique||"standard";
- if(methodNeedsPartners(m)){
-   const target=m==="giant"?Math.max(3,Number(e.methodData?.giantCount)||Math.max(3,oldGroupCount)):2;
-   return`<div class="method-link-box"><div class="method-config-note">${m==="giant"?`Giant Set mit ${target} Übungen. Die Übungen laufen direkt hintereinander; Pause nach der kompletten Runde.`:m==="preexhaust"?"Pre-Exhaust: zuerst die isolierende Vorermüdungsübung, direkt danach die Mehrgelenksübung.":"Superset: zwei Übungen direkt nacheinander; Pause nach dem Paar."}</div>${m==="giant"?`<div class="form-field"><label>ANZAHL ÜBUNGEN</label><select id="cfgGiantCount" class="field">${[3,4,5,6].map(n=>`<option ${target===n?"selected":""}>${n}</option>`).join("")}</select></div>`:""}</div>`
- }
- if(m==="dropset")return`<div class="method-link-box"><div class="method-config-note">Basissatz, dann ohne reguläre Satzpause die Last reduzieren. WDH. bleiben je Drop frei eintragbar.</div><div class="grid2"><div class="form-field"><label>DROPS</label><select id="cfgDrops" class="field">${[1,2,3,4].map(x=>`<option ${Number(e.methodData?.dropCount||2)===x?"selected":""}>${x}</option>`).join("")}</select></div><div class="form-field"><label>REDUKTION %</label><select id="cfgDropPct" class="field">${[10,15,20,25,30].map(x=>`<option ${Number(e.methodData?.dropPercent||20)===x?"selected":""}>${x}</option>`).join("")}</select></div></div></div>`;
- if(m==="cluster")return`<div class="method-link-box"><div class="method-config-note">Ein Satz wird in feste Wiederholungsblöcke mit kurzen Pausen im Satz aufgeteilt. Die WDH. pro Cluster werden hier festgelegt und im Training nicht verändert.</div><div class="grid2"><div class="form-field"><label>CLUSTER PRO SATZ</label><select id="cfgClusterBlocks" class="field">${[2,3,4,5,6].map(x=>`<option ${Number(e.methodData?.blocks||4)===x?"selected":""}>${x}</option>`).join("")}</select></div><div class="form-field"><label>WDH. PRO CLUSTER</label><select id="cfgClusterReps" class="field">${[1,2,3,4,5,6].map(x=>`<option ${Number(e.methodData?.clusterReps||2)===x?"selected":""}>${x}</option>`).join("")}</select></div></div><div class="form-field"><label>PAUSE IM SATZ</label><select id="cfgIntraRest" class="field">${[10,15,20,30,45].map(x=>`<option value="${x}" ${Number(e.methodData?.intraRest||20)===x?"selected":""}>${x}s</option>`).join("")}</select></div></div>`;
- if(m==="restpause")return`<div class="method-link-box"><div class="method-config-note">Startblock nahe am Limit, danach kurze Pausen und frei eintragbare Mini-Blöcke bis zum Gesamtziel.</div><div class="form-field"><label>REST-PAUSE PAUSE</label><select id="cfgIntraRest" class="field">${[10,15,20,30].map(x=>`<option value="${x}" ${Number(e.methodData?.intraRest||20)===x?"selected":""}>${x}s</option>`).join("")}</select></div></div>`;
- return""
-}
-
-function commitAtomicPlanGroup(sourceIndexes,drafts,focusIndex=null){
- const indexes=[...sourceIndexes].sort((a,b)=>a-b),insertAt=indexes[0];
- const result=drafts.map(clone);
- if(result.length>1&&groupMethod(result[0].setTechnique)){
-  const gid=result[0].techniqueGroup||`tg_${uid()}`,method=result[0].setTechnique;
-  result.forEach(e=>{e.techniqueGroup=gid;e.setTechnique=method;e.linkedExerciseNames=result.filter(x=>x!==e).map(x=>x.name)})
- }else result.forEach(e=>{e.techniqueGroup=null;e.linkedExerciseNames=[]});
- [...indexes].sort((a,b)=>b-a).forEach(i=>currentPlan.exercises.splice(i,1));currentPlan.exercises.splice(insertAt,0,...result);
- markEditorDirty();planAddFlow=null;sheetStack=[];currentSheetState=null;$("sheetWrap").classList.remove("rethink-entry-sheet");$("sheetWrap").classList.add("hidden");renderEditorExercises();persistUI();toast(result.length>1?"Serie übernommen":"Änderung übernommen")
-}
-function beginExistingPartnerReplacement(sourceIndexes,firstDraft,editIndex=sourceIndexes[0]){
- const method=firstDraft.setTechnique,target=method==="giant"?(Number(firstDraft.methodData?.giantCount)||3):2,gid=`tg_${uid()}`;
- const ordered=sourceIndexes.map((idx,pos)=>({idx,pos,exercise:clone(currentPlan.exercises[idx])})),editedPos=Math.max(0,ordered.findIndex(x=>x.idx===editIndex));
- const first=clone(firstDraft);first.setTechnique=method;first.techniqueGroup=gid;first._draftOrder=editedPos;
- const others=ordered.filter(x=>x.idx!==editIndex);
- const startFlow=selected=>{
-  const seeds=[...selected.map(x=>({pos:x.pos,exercise:x.exercise})),{pos:editedPos,exercise:first}].sort((a,b)=>a.pos-b.pos);
-  const pending=seeds.map(x=>{const d=clone(x.exercise);if(d!==first&&d.setTechnique!==method)prepareDraftForTargetMethod(d,method,target);else{d.setTechnique=method;d.methodData=d.methodData||{};if(method==="giant")d.methodData.giantCount=target}d.sets=Number(first.sets)||3;d.rest=Number(first.rest)||0;d.techniqueGroup=gid;return{exercise:d,order:x.pos}});
-  planAddFlow={step:"partnerPicker",q:exercisePickerState.q||"",type:exercisePickerState.type||"Alle",muscles:new Set(exercisePickerState.muscles||[]),drafts:[],pendingSeeds:pending,current:null,group:{id:gid,method,target},history:[],methodScroll:0,editSourceIndexes:[...sourceIndexes],editInsertAt:Math.min(...sourceIndexes),nextOrder:sourceIndexes.length};
-  advancePartnerDraftFlow()
- };
- const keepNeeded=target-1;
- if(others.length>keepNeeded){
-  let chosen=new Set(others.slice(0,keepNeeded).map(x=>x.idx));
-  const renderChoice=()=>{openSheet(`${METHOD_LABEL[method]} · Struktur festlegen`,`<div class="method-config-note">Welche ${keepNeeded} bestehende${keepNeeded===1?" Übung":"n Übungen"} sollen neben „${esc(first.name)}“ erhalten bleiben? Es wird noch nichts am Plan geändert.</div><div class="picker-list">${others.map(x=>`<button class="exercise-card ${chosen.has(x.idx)?"selected":""}" data-keep-existing="${x.idx}" style="width:100%;text-align:left"><strong>${esc(x.exercise.name)}</strong><small>${chosen.has(x.idx)?"Wird übernommen":"Wird als Standard außerhalb der neuen Serie erhalten"}</small></button>`).join("")}</div><button id="confirmExistingSelection" class="primary" style="width:100%;margin-top:10px">Auswahl bestätigen</button>`,null,{replace:true});document.querySelectorAll("[data-keep-existing]").forEach(b=>b.onclick=()=>{const id=Number(b.dataset.keepExisting);if(chosen.has(id))chosen.delete(id);else if(chosen.size<keepNeeded)chosen.add(id);renderChoice()});$("confirmExistingSelection").onclick=()=>{if(chosen.size!==keepNeeded)return toast(`Bitte genau ${keepNeeded} Übung${keepNeeded===1?"":"en"} auswählen.`);const selected=others.filter(x=>chosen.has(x.idx));const detached=others.filter(x=>!chosen.has(x.idx)).map(x=>x.exercise);first._detachedAfterConversion=detached;startFlow(selected)}};
-  renderChoice();return
- }
- startFlow(others)
-}
-function continueGroupAdd(flow){
- const members=currentPlan.exercises.filter(x=>x.techniqueGroup===flow.groupId);
- if(members.length>=flow.target){renderEditorExercises();return}
- const used=new Set(members.map(x=>x.name));
- openExercisePicker(name=>{
-   const base=members[0],fresh=normPlanEx({...findExercise(name),sets:base.sets||3,setTechnique:flow.method,reps:base.reps||"8-12",rest:restSeconds(base,90),techniqueGroup:flow.groupId,methodData:{...(base.methodData||{})}});
-   const groupIdx=currentPlan.exercises.map((x,i)=>x.techniqueGroup===flow.groupId?i:-1).filter(i=>i>=0);
-   const insertAt=(groupIdx.length?Math.max(...groupIdx)+1:currentPlan.exercises.length);
-   currentPlan.exercises.splice(insertAt,0,fresh);markEditorDirty();renderEditorExercises();persistUI();
-   configureExercise(insertAt,flow)
- },{exclude:used,title:`${METHOD_LABEL[flow.method]} · Übung ${members.length+1} hinzufügen`,detailAdd:true})
-}
-function detachExerciseGroup(i){
- const ids=groupIndexesFor(i);if(!ids.length)return;if(!confirm("Verknüpfte Serie wirklich auflösen? Alle Übungen bleiben als Standardübungen erhalten."))return;
- ids.forEach(idx=>{const e=currentPlan.exercises[idx];e.techniqueGroup=null;e.setTechnique="standard";e.linkedExerciseNames=[];if(!e.reps||["20","30","20-30"].includes(String(e.reps)))e.reps="8-12"});
- markEditorDirty();renderEditorExercises();persistUI();toast("Verknüpfung gelöst")
-}
-
-let exercisePickerState={q:"",type:"Alle",muscles:[]};
-function openExercisePicker(onPick,{returnToSheet=false,exclude=new Set(),title="Übung hinzufügen",detailAdd=false}={}){
- const all=allExercises().filter(x=>!exclude.has(x.name));let q=exercisePickerState.q||"",type=exercisePickerState.type||"Alle",muscles=new Set(exercisePickerState.muscles||[]);
- const filteredRows=()=>all.filter(x=>(type==="Alle"||(x.categories||[x.category]).includes(type))&&(!muscles.size||[...muscles].every(m=>(x.muscles||[]).includes(m)))&&(!q||[x.name,...(x.equipment||[]),...(x.variants||[])].join(" ").toLowerCase().includes(q))).sort(groupedExerciseSort);
- const rowsMarkup=rows=>rows.map(x=>`<div class="exercise-card picker-quick-card"><button class="picker-info" type="button" data-pick-info="${esc(x.name)}"><div><strong>${esc(x.name)}</strong><small>${esc(x.category)} · ${esc((x.muscles||[]).join(", "))}</small></div></button><button class="picker-quick-add" type="button" data-pick="${esc(x.name)}" aria-label="${esc(x.name)} hinzufügen">+</button></div>`).join("");
- const bindRows=()=>{
-   document.querySelectorAll("[data-pick]").forEach(b=>b.onclick=e=>{e.stopPropagation();const name=b.dataset.pick;if(returnToSheet){onPick(name)}else{closeSheet({all:true});onPick(name)}});
-   document.querySelectorAll("[data-pick-info]").forEach(b=>b.onclick=()=>{
-    const name=b.dataset.pickInfo;
-    if(detailAdd){
-      closeSheet({all:true});
-      openExerciseDetail(name,{onAdd:(picked)=>{onPick(picked)}})
-    }else openExerciseDetail(name)
-   })
- };
- const refreshRows=()=>{
-   const rows=filteredRows(),count=$("pickerCount"),list=$("pickerRows");
-   if(count)count.textContent=`${rows.length} Übungen`;
-   if(list){list.innerHTML=rowsMarkup(rows);bindRows()}
- };
- const render=()=>{
-  const types=["Alle",...orderedExerciseTypes(all).filter(x=>x!=="Alle")],ms=orderedMuscles(all),rows=filteredRows();
-  $("sheetBody").innerHTML=`<div class="search"><input id="pickerSearch" class="field" placeholder="Übung suchen" value="${esc(q)}"><button id="pickerClear">×</button></div><div class="chips">${types.map(x=>`<button class="chip ${type===x?"active":""}" data-pt="${esc(x)}">${esc(x)}</button>`).join("")}</div><div class="chips">${ms.map(x=>`<button class="chip ${(x==="Alle"&&!muscles.size)||muscles.has(x)?"active":""}" data-pm="${esc(x)}">${esc(x)}</button>`).join("")}</div><div id="pickerCount" class="small" style="margin:2px 0 8px">${rows.length} Übungen</div><div id="pickerRows">${rowsMarkup(rows)}</div>`;
-  $("pickerSearch").oninput=()=>{q=$("pickerSearch").value.toLowerCase();exercisePickerState={q,type,muscles:[...muscles]};refreshRows()};
-  $("pickerClear").onclick=()=>{q="";exercisePickerState={q,type,muscles:[...muscles]};$("pickerSearch").value="";refreshRows();$("pickerSearch").focus()};
-  document.querySelectorAll("[data-pt]").forEach(b=>b.onclick=()=>{type=(type===b.dataset.pt&&type!=="Alle")?"Alle":b.dataset.pt;exercisePickerState={q,type,muscles:[...muscles]};render()});
-  document.querySelectorAll("[data-pm]").forEach(b=>b.onclick=()=>{const m=b.dataset.pm;if(m==="Alle")muscles.clear();else muscles.has(m)?muscles.delete(m):muscles.add(m);exercisePickerState={q,type,muscles:[...muscles]};render()});
-  bindRows()
- };
- openSheet(title,"");$("sheetWrap")?.classList.add("exercise-picker-sheet");render()
-}
-function sortedPlansForPicker(query=""){return sortedPlans().filter(p=>(p.exercises||[]).length>0).filter(p=>!query||p.name.toLowerCase().includes(query.toLowerCase()))}
-function planPickerMarkup(query=""){
- const rows=sortedPlansForPicker(query),defs=[["name","A–Z"],["created","Hinzugefügt"],["updated","Geändert"],["used","Genutzt"]];
- return`<div class="plan-picker-tools"><div class="search"><input id="planPickerSearch" class="field" type="search" inputmode="search" enterkeyhint="search" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" placeholder="Plan suchen" value="${esc(query)}"><button id="planPickerClear">×</button></div><div class="chips">${defs.map(([k,l])=>`<button class="chip ${planSort.key===k?"active":""}" data-picker-sort="${k}">${l}${planSort.key===k?(planSort.dir>0?" ↑":" ↓"):""}</button>`).join("")}</div></div><div id="planPickerRows">${rows.map(p=>`<button class="plan-card" data-start="${p.id}"><div><strong>${esc(p.name)}</strong><small>${p.exercises.length} Übungen · ${countPlanSets(p)} Sätze</small></div><span class="chev">›</span></button>`).join("")||'<div class="small">Keine passenden Pläne.</div>'}</div>`
-}
-let activeHomeClockTimer=null;
-function currentWorkoutExerciseLabel(){
- if(!activeWorkout)return"";
- const idx=(activeWorkout.exercises||[]).findIndex(e=>(e.liveSets||[]).some(s=>!s.completed));
- const i=idx<0?Math.max(0,(activeWorkout.exercises||[]).length-1):idx;
- const ex=activeWorkout.exercises?.[i];
- return ex?`Aktuell: ${ex.name} · ${i+1}/${activeWorkout.exercises.length}`:""
-}
-function updateActiveHomeClock(){const el=$("activeHomeClock");if(el&&activeWorkout)el.textContent=formatDuration(Date.now()-activeWorkout.startedAt)}
-function completedSetsOfExercise(e){return(e?.liveSets||[]).filter(s=>s.completed)}
-function completedExerciseCount(w){return(w?.exercises||[]).filter(e=>{const planned=(e?.liveSets||[]).length||Number(e?.sets)||0,done=completedSetsOfExercise(e).length;return planned>0&&done===planned}).length}
-function completedSetCount(w){return(w?.exercises||[]).reduce((n,e)=>n+completedSetsOfExercise(e).length,0)}
-function historyPlanExists(w){return plans.some(p=>String(p.id)===String(w.planId))}
-function historyDateTime(w){
- const d=new Date(w.finishedAt||w.startedAt||Date.now());
- return `${d.toLocaleDateString("de-DE")} · ${d.toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit"})}`
-}
-function renderTrainingHome(){
- clearInterval(activeHomeClockTimer);
- $("activeBanner").innerHTML=activeWorkout?`<div class="active-workout-card"><button class="active-resume-area" id="resumeWorkout"><div class="space"><div><div class="active-kicker">Training läuft</div><div class="active-name">${esc(activeWorkout.name)}</div><div class="active-meta">${activeWorkout.exercises?.length||0} Übungen · ${workoutSetCount(activeWorkout)} Sätze</div></div><div id="activeHomeClock" class="active-time">${formatDuration(Date.now()-activeWorkout.startedAt)}</div></div><div class="active-current">${esc(currentWorkoutExerciseLabel())}</div></button><div class="active-workout-actions"><button id="homeDiscardWorkout" class="secondary danger">Verwerfen</button><button id="homeFinishWorkout" class="secondary">Beenden</button></div></div>`:"";
- $("startTrainingCard").classList.toggle("hidden",!!activeWorkout);
- if(activeWorkout){$("resumeWorkout").onclick=()=>openLive();$("homeFinishWorkout").onclick=openFinishWorkoutSheet;$("homeDiscardWorkout").onclick=discardWorkoutAsked;activeHomeClockTimer=setInterval(updateActiveHomeClock,1000)}
- $("historyList").innerHTML=history.slice().reverse().slice(0,30).map((w,i)=>{const idx=history.length-1-i,ex=completedExerciseCount(w),sets=completedSetCount(w);return`<div class="plan-card history-card"><div data-history="${idx}"><strong>${esc(w.name||w.planName||"Training")}</strong><small>${historyDateTime(w)} · ${ex} abgeschlossene Übung${ex===1?"":"en"} · ${sets} abgeschlossene Sätze</small></div><div class="history-actions"><button class="icon-btn" data-history-open="${idx}">›</button><button class="icon-btn danger" data-history-delete="${idx}">−</button></div></div>`}).join("")||'<div class="card small">Noch keine Trainings.</div>';
- document.querySelectorAll("[data-history-open]").forEach(b=>b.onclick=()=>openSummary(history[Number(b.dataset.historyOpen)]));
- document.querySelectorAll("[data-history]").forEach(b=>b.onclick=()=>openSummary(history[Number(b.dataset.history)]));
- document.querySelectorAll("[data-history-delete]").forEach(b=>b.onclick=()=>{const i=Number(b.dataset.historyDelete);if(confirm("Diesen Verlaufseintrag löschen?")){history.splice(i,1);saveAll();renderTrainingHome()}});
-;const __startCard=$("startTrainingCard");if(__startCard)__startCard.classList.toggle("hidden",!!activeWorkout);}
-// History opening is delegated as well, so a later Training-tab rerender cannot leave dead cards.
-document.addEventListener("click",e=>{
- const t=e.target.closest?.("[data-history-open],[data-history]");if(!t||e.target.closest("[data-history-delete]"))return;
- const raw=t.dataset.historyOpen??t.dataset.history,idx=Number(raw),w=history[idx];if(!w)return;
- e.preventDefault();e.stopPropagation();openSummary(w)
-},true);
-$("clearHistoryBtn").onclick=()=>{if(history.length&&confirm("Gesamten Trainingsverlauf löschen?")){history=[];saveAll();renderTrainingHome()}};
-$("choosePlanStart").onclick=()=>openPlanStartSheet();
-function openPlanStartSheet(){
- if(!plans.length){
-  currentPlan={id:uid(),name:"",createdAt:Date.now(),updatedAt:Date.now(),exercises:[],_isNew:true};
-  setEditorBaseline();openPlanEditor();return
- }
- let q="";
- const bindRows=()=>document.querySelectorAll("[data-start]").forEach(b=>b.onclick=()=>{openPreStart(Number(b.dataset.start))});
- const refreshRows=()=>{
-  const rows=sortedPlansForPicker(q);
-  $("planPickerRows").innerHTML=rows.map(p=>`<button class="plan-card" data-start="${p.id}"><div><strong>${esc(p.name)}</strong><small>${p.exercises.length} Übungen · ${countPlanSets(p)} Sätze</small></div><span class="chev">›</span></button>`).join("")||'<div class="small">Keine passenden Pläne.</div>';
-  bindRows()
- };
- const render=()=>{
-  $("sheetBody").innerHTML=planPickerMarkup(q);
-  const planSearch=$("planPickerSearch");
-  planSearch.oninput=()=>{q=planSearch.value;refreshRows();requestAnimationFrame(()=>{if(document.activeElement!==planSearch)planSearch.focus({preventScroll:true});window.rethinkKeepFieldVisibleV24?.(planSearch)})};
-  $("planPickerClear").onclick=()=>{q="";planSearch.value="";refreshRows();planSearch.focus({preventScroll:true});window.rethinkKeepFieldVisibleV24?.(planSearch)};
-  document.querySelectorAll("[data-picker-sort]").forEach(b=>b.onclick=()=>{if(planSort.key===b.dataset.pickerSort)planSort.dir*=-1;else{planSort.key=b.dataset.pickerSort;planSort.dir=1}render()});
-  bindRows()
- };
- openSheet("Trainingsplan auswählen","");render()
-}
-function previewVisualGroups(exercises){
- const out=[];
- (exercises||[]).forEach((e,i)=>{
-  if(groupMethod(e.setTechnique)&&e.techniqueGroup){
-   let g=out.find(x=>x.key===e.techniqueGroup);if(g)g.items.push({e,i});else out.push({key:e.techniqueGroup,method:e.setTechnique,items:[{e,i}]})
-  }else out.push({key:`p_${i}`,method:e.setTechnique||"standard",items:[{e,i}]})
- });
- out.forEach(g=>{if(groupMethod(g.method))g.items.sort((a,b)=>{const ap=Number.isFinite(Number(a.e.groupPosition))?Number(a.e.groupPosition):a.i,bp=Number.isFinite(Number(b.e.groupPosition))?Number(b.e.groupPosition):b.i;return ap-bp||a.i-b.i})});
- return out.map(g=>({...g,items:g.items.map(x=>x.e)}))
-}
-function previewMemberHeader(e,j,method){
- const letter=groupMethod(method)?String.fromCharCode(65+j):"";
- return `<div class="preview-group-member"><div class="live-card-head"><div><div class="live-single-title-row"><button class="exercise-title-link">${letter?`<span class="group-letter">${letter}</span><span class="group-title-name">${esc(exerciseDisplayName(e))}</span>`:esc(exerciseDisplayName(e))}</button></div>${exerciseInlineMeta(e)}<div class="prescription">${esc(planPrescription(e))}</div></div></div></div>`
-}
-function previewCell(label,value){
- return `<div class="pv-field"><span class="pv-label">${esc(label)}</span><span class="pv-box">${esc(String(value??""))}</span></div>`
-}
-function previewRow(index,leftLabel,leftValue,rightLabel,rightValue,extraClass=""){
- return `<div class="pv-row ${extraClass}"><span class="pv-index">${esc(String(index))}</span>${previewCell(leftLabel,leftValue)}${previewCell(rightLabel,rightValue)}</div>`
-}
-function previewGroupRounds(g){
- const rounds=Math.max(1,...g.items.map(e=>e.liveSets?.length||e.sets||1));let html="";
- for(let si=0;si<rounds;si++){
-  html+=`<div class="pv-round"><div class="pv-round-title">Satz ${si+1}</div>`;
-  g.items.forEach((e,gi)=>{
-   const s=e.liveSets?.[si]||initSet(e,si),idx=`${si+1}${String.fromCharCode(65+gi)}`;
-   html+=e.measureMode==="time"
-    ?previewRow(idx,"ZEIT",formatTime(s.time||e.timeSeconds||60),"LEISTUNG","Leistung","pv-time-row")
-    :previewRow(idx,"KG","KG","WDH.",liveRepBoxSuggestion(e,s),"pv-rep-row");
-  });
-  html+=`</div>`;
- }
- return html
-}
-function previewMethodCard(g){
- const grouped=groupMethod(g.method);
- return `<div class="method-card method-${g.method} ${grouped?"connected-method-card":""}"><div class="method-name">${METHOD_LABEL[g.method]}</div><div class="method-help">${esc(methodHelp(g.method))}</div>${g.items.map((e,j)=>previewMemberHeader(e,j,g.method)).join("")}${grouped?previewGroupRounds(g):`<div class="pv-set-area">${g.items.map(e=>renderPreviewSets(e)).join("")}</div>`}</div>`
-}
-function openPreview(p){
-function previewWorkoutFromPlanV44(p){
-  const exercises=clone(p.exercises||[]).map(e=>{
-    const x=normPlanEx(e);
-    const count=Number(x.sets)||defaultSetsForExerciseMethod(x,x.setTechnique||"standard");
-    x.liveSets=Array.from({length:count},(_,i)=>initSet(x,i));
-    return x
-  });
-  return {id:"preview",name:p.name||"Workout Vorschau",startedAt:Date.now(),activeExerciseIndex:-999,exercises}
- }
-
-    $("previewTitle").textContent=p.name||"Workout Vorschau";
-    const realWorkout=activeWorkout;
-    const fake=previewWorkoutFromPlanV44(p);
-    try{
-      activeWorkout=fake;
-      const markup=liveVisualGroups(fake.exercises).map(g=>g.group
-        ?renderLiveGroupCard(g)
-        :renderLiveSingleCard(g.members[0].e,g.members[0].i)
-      ).join("");
-      $("previewBody").innerHTML=`<div class="preview-live-shell preview-live-mirror-v44">${markup}</div>`;
-    }finally{
-      activeWorkout=realWorkout
-    }
-    const previewBody=$("previewBody");
-    previewBody.querySelectorAll("input,button,textarea,select,a").forEach(el=>{
-      el.tabIndex=-1;
-      el.setAttribute("aria-disabled","true");
-    });
-    previewBody.setAttribute("inert","");
-    openPage("previewPage")
-}
-function renderPreviewSets(e){
- if(e.measureMode==="time"){
-  return e.liveSets.map((s,si)=>previewRow(si+1,"ZEIT",formatTime(s.time||e.timeSeconds||60),"LEISTUNG","Leistung","pv-time-row")).join("")
- }
- if(e.setTechnique==="cluster"){
-  return e.liveSets.map((s,si)=>{
-   const t=targetVisibleSegments(e,s),segs=t.items.map(x=>[x.seg,x.index]);
-   return `<div class="pv-block"><div class="pv-round-title">Satz ${si+1}</div>${segs.map(([g,gi])=>previewRow(gi+1,"KG","KG","WDH.",g.reps||"WDH.","pv-cluster-row")).join("")}</div>`
-  }).join("")
- }
- if(["dropset","restpause"].includes(e.setTechnique)){
-  return e.liveSets.map((s,si)=>`<div class="pv-block"><div class="pv-round-title">Satz ${si+1}</div>${s.segments.map((g,gi)=>`<div class="pv-advanced-row"><span class="pv-index">${gi+1}</span><span class="pv-segment-label">${esc(g.label)}</span>${previewCell("KG","KG")}${previewCell("WDH.",g.reps||"WDH.")}</div>`).join("")}</div>`).join("")
- }
- return e.liveSets.map((s,si)=>previewRow(si+1,"KG","KG","WDH.",s.reps||liveRepBoxSuggestion(e,s),"pv-rep-row")).join("")
-}
-function openPreStart(id){
- const p=plans.find(x=>String(x.id)===String(id));
- if(!p)return;
- if(!(p.exercises||[]).length)return alert("Dieser Plan enthält noch keine Übung und kann nicht gestartet werden.");
- pendingStartPlan=p;
- confirmAndStartPlan(p)
-}
-$("confirmStartBtn").onclick=()=>startWorkout(pendingStartPlan);$("preStartTopPlay").onclick=()=>startWorkout(pendingStartPlan);
-function lastWorkoutForPlan(p){
- const ids=new Set([p.id,p.sourcePlanId,...(p.sourcePlanIds||[]),...(p.weekSourceIds||[])].filter(Boolean).map(String));
- for(let i=history.length-1;i>=0;i--){
-  const w=history[i],wids=[w.planId,w.sourcePlanId,...(w.sourcePlanIds||[]),...(w.weekSourceIds||[])].filter(Boolean).map(String);
-  if(wids.some(id=>ids.has(id))||w.planName===p.name||w.name===p.name)return w
- }
- return null
-}
-function copySuggestion(target,prev){
- if(!target||!prev)return;
- if(target.group&&prev.group){target.segments.forEach((g,i)=>{const pg=prev.segments?.find(x=>x.name===g.name)||prev.segments?.[i];if(pg)g._suggested={weight:pg.weight||"",reps:pg.reps||""}});return}
- if(target.segments&&prev.segments){target.segments.forEach((g,i)=>{const pg=prev.segments?.[i];if(pg)g._suggested={weight:pg.weight||"",reps:pg.reps||""}});return}
- target._suggested={weight:prev.weight||"",reps:prev.reps||"",level:prev.level||"",time:prev.time||""}
-}
-function applyPreviousWorkoutSuggestions(p){
- if(!p)return;
- (p.exercises||[]).forEach(e=>{
-  let prev=null,fallback=null;
-  for(let hi=history.length-1;hi>=0&&!prev;hi--){
-   const all=history[hi].exercises||[];
-   const base=all.filter(x=>String(x.name||"")===String(e.name||"")&&String(x.setTechnique||"standard")===String(e.setTechnique||"standard")&&String(x.measureMode||"reps")===String(e.measureMode||"reps"));
-   const exact=base.filter(x=>String(x.variant||"")===String(e.variant||"")&&String(x.equipmentChoice||"")===String(e.equipmentChoice||""));
-   for(const list of [exact,base]){
-    for(let mi=list.length-1;mi>=0;mi--){const done=(list[mi].liveSets||[]).filter(s=>s.completed||s.segments?.some(g=>g.completed));if(done.length){const hit={exercise:list[mi],sets:done};if(list===exact)prev=hit;else if(!fallback)fallback=hit;break}}
-    if(prev)break;
-   }
-  }
-  prev=prev||fallback;if(!prev)return;
-  (e.liveSets||[]).forEach((s,i)=>{if(prev.sets[i])copySuggestion(s,prev.sets[i])});
-  e._lastRatings=prev.sets.map(s=>s.rating||s.segments?.find(g=>g.rating)?.rating||"")
- })
-}
-function effectiveValue(value,suggested){return String(value??"").trim()!==""?value:(suggested??"")}
-function suggestedComplete(e,s){
- if(e.measureMode==="time")return Number(s.time)>0&&!!(s._touched||s._timedOnce);
- if(s.group)return s.segments.every(g=>effectiveValue(g.weight,g._suggested?.weight)!==""&&Number(effectiveValue(g.reps,g._suggested?.reps))>0);
- if(s.segments)return s.segments.every(g=>effectiveValue(g.weight,g._suggested?.weight)!==""&&Number(effectiveValue(g.reps,g._suggested?.reps))>0);
- return effectiveValue(s.weight,s._suggested?.weight)!==""&&Number(effectiveValue(s.reps,s._suggested?.reps))>0
-}
-function promoteSuggested(e,s){
- if(!s)return;
- if(s.group||s.segments){(s.segments||[]).forEach(g=>{const sug=g?._suggested;if(!sug)return;if(String(g.weight??"").trim()===""&&String(sug.weight??"").trim()!=="")g.weight=sug.weight;if(String(g.reps??"").trim()===""&&String(sug.reps??"").trim()!=="")g.reps=sug.reps});return}
- const sug=s._suggested;if(!sug)return;
- if(String(s.weight??"").trim()===""&&String(sug.weight??"").trim()!=="")s.weight=sug.weight;
- if(String(s.reps??"").trim()===""&&String(sug.reps??"").trim()!=="")s.reps=sug.reps;
- // "Leistung" is a label/placeholder, never data. Only explicit user input is stored.
- if(e.measureMode==="time"&&Number(s.time)>0)s._timeAccepted=true
-}
-function inputSuggestionAttr(v){return String(v??"").trim()!==""?` placeholder="${esc(v)}"`:""}
-function initSet(e,i){
- if(e.measureMode==="time"){
-  const origin=Math.max(15,Number(e.timeSeconds)||60);
-  return{time:origin,_timerOrigin:origin,weight:"",level:e.level||"",completed:false,rating:"",_suggested:{level:"Leistung"}}
- }
- if(groupMethod(e.setTechnique)){
-  const r=amrapText(e.reps||defaultRepsForMethod(e.setTechnique||"standard"));
-  return{weight:"",reps:"",completed:false,rating:"",_suggested:{reps:r}}
- }
- if(["dropset","restpause","cluster"].includes(e.setTechnique)){
-  const len=e.setTechnique==="dropset"?(e.methodData?.dropCount||2)+1:e.setTechnique==="cluster"?Math.max(2,Number(e.methodData?.blocks)||4):(e.methodData?.maxBlocks||6);
-  const segments=Array.from({length:len},(_,g)=>({
-    label:e.setTechnique==="dropset"?(g?`Drop ${g}`:"Basis"):e.setTechnique==="restpause"?(g?`RP ${g}`:"Start"):"",
-    weight:"",reps:e.setTechnique==="cluster"?String(e.methodData?.clusterReps||2):"",completed:false,
-    _suggested:{}
-  }));
-  return{segments,completed:false,rating:""}
- }
- if(e.setTechnique==="pyramid"){
-  ensurePyramidData(e);
-  return{weight:"",reps:"",completed:false,rating:"",_suggested:{reps:String((e.methodData?.reps||[])[i]||8)}}
- }
- if(e.setTechnique==="backoff"){
-  const r=i===0?(e.methodData?.topReps||5):(e.methodData?.backoffReps||8);
-  return{weight:"",reps:String(r),completed:false,rating:""}
- }
- return{weight:"",reps:"",completed:false,rating:"",_suggested:{reps:amrapText(e.reps||"8-12")}}
-}
-function startWorkout(p){requestTimerNotifications();if(!p||(p.exercises||[]).length===0)return alert("Ein leeres Training kann nicht gestartet werden.");const stored=plans.find(x=>x.id===p.id);if(stored)stored.lastUsedAt=Date.now();const previous=lastWorkoutForPlan(p);activeWorkout={id:uid(),planId:stored?p.id:(p.sourcePlanId||null),sourcePlanId:p.sourcePlanId||(stored?p.id:null),startedFromUnsavedPlan:!!p.transientEditorPlan,structureEdited:false,name:p.name,planName:p.name,startedAt:Date.now(),note:"",restEnd:0,activeExerciseIndex:0,structureBaseline:null,weekSourceIds:clone(p.weekSourceIds||[]),weekDate:p.weekDate||null,isWeekCombined:Array.isArray(p.weekSourceIds)&&p.weekSourceIds.length>0,exercises:clone(p.exercises).map(e=>({...normPlanEx(e),liveSets:Array.from({length:Number(e.sets)||defaultSetsForExerciseMethod(e,e.setTechnique||"standard")},(_,i)=>initSet(e,i))}))};activeWorkout.structureBaseline=clone(activeWorkout.exercises);livePlanEdited=false;applyPreviousWorkoutSuggestions(activeWorkout,previous);tabScroll.training=0;if(tabUiState.training)tabUiState.training.scroll=0;
-saveAll();
-currentTab="training";
-document.querySelectorAll(".page").forEach(x=>x.classList.add("hidden"));
-pageStack=[];
-$("bottomNav").classList.remove("hidden");
-showTab("training",{reset:false});
-renderTrainingHome();
-// Starting a workout always enters the running workout immediately. No second render frame
-// is allowed to leave the user stranded on the Training home.
-openLive(true);requestAnimationFrame(()=>{$("livePage").scrollTop=0;focusLiveExercise(0,"auto");persistUI()})
-}
-function liveCardIndexesV13(card){return String(card?.dataset?.liveMembers||card?.dataset?.liveCard||"").split(",").map(Number).filter(Number.isFinite)}
-function liveExerciseComplete(e){return !!e&&(e.liveSets||[]).length>0&&(e.liveSets||[]).every(s=>!!s.completed)}
-function liveGroupComplete(g){return !!g&&Array.isArray(g.members)&&g.members.length>0&&g.members.every(x=>liveExerciseComplete(x.e))}
-function liveCardCompleteV13(card){const ids=liveCardIndexesV13(card);return ids.length>0&&ids.every(i=>liveExerciseComplete(activeWorkout?.exercises?.[i]))}
-function refreshActiveWorkoutCardV13(scroll=false){
- if(!activeWorkout)return;
- const idx=Math.max(0,Math.min(Number(activeWorkout.activeExerciseIndex)||0,(activeWorkout.exercises||[]).length-1));
- document.querySelectorAll(".live-exercise-card[data-live-card]").forEach(card=>{
-   const current=liveCardIndexesV13(card).includes(idx),complete=liveCardCompleteV13(card);
-   card.classList.toggle("live-method-complete",complete);
-   card.classList.toggle("active-live-exercise",current&&!complete)
- });
- if(scroll){
-   const card=[...document.querySelectorAll(".live-exercise-card[data-live-card]")].find(c=>liveCardIndexesV13(c).includes(idx));
-   card?.scrollIntoView?.({block:"start",behavior:"auto"})
- }
-}
-function setActiveExercise(index,scroll=false,behavior="auto"){
- if(!activeWorkout)return;
- index=Math.max(0,Math.min(Number(index)||0,(activeWorkout.exercises||[]).length-1));
- activeWorkout.activeExerciseIndex=index;saveAll();
- refreshActiveWorkoutCardV13(false);
- if(scroll){
-  const card=[...document.querySelectorAll(".live-exercise-card[data-live-card]")].find(c=>liveCardIndexesV13(c).includes(index));
-  if(card)requestAnimationFrame(()=>card.scrollIntoView({block:"start",behavior:behavior==="smooth"?"smooth":"auto"}))
- }
-}
-function focusLiveExercise(index=0,behavior="auto"){
- setActiveExercise(index,false,behavior);
- requestAnimationFrame(()=>{
-  const page=$("livePage");
-  const card=[...document.querySelectorAll("#liveBody .live-exercise-card[data-live-card]")].find(c=>liveCardIndexesV13(c).includes(Number(index)));
-  if(!page||!card)return;
-  const header=page.querySelector(".page-top");
-  const top=Math.max(0,card.offsetTop-(header?.offsetHeight||0)-10);
-  page.scrollTo({top,behavior:behavior==="smooth"?"smooth":"auto"})
- })
-}
-function openLive(focus=false){
- if(!activeWorkout)return;
- const live=$("livePage");if(!live)return;
- const visible=document.querySelector(".page:not(.hidden)");
- if(visible&&visible.id!=="livePage")pageStack.push({page:visible.id,scroll:visible.scrollTop||0});
- else if(!pageStack.length)pageStack.push({tab:currentTab||"training",scroll:tabScroll[currentTab||"training"]||0});
- document.querySelectorAll(".page").forEach(x=>x.classList.add("hidden"));
- currentTab="training";
- document.querySelectorAll("#bottomNav button").forEach(b=>b.classList.toggle("active",b.dataset.tab==="training"));
- $("bottomNav").classList.add("hidden");live.classList.remove("hidden");
- $("liveTitle").textContent=activeWorkout.name;renderLive();
- clearInterval(clockTimer);clockTimer=setInterval(()=>{if(activeWorkout&&$("liveClock"))$("liveClock").textContent=formatDuration(Date.now()-activeWorkout.startedAt)},1000);
- if(restEnd>Date.now())startRest(Math.ceil((restEnd-Date.now())/1000),true);else{restoreRestTimer();showRestBarIdle()}
- resumeVisibleTimeTimers();
- requestAnimationFrame(()=>{live.scrollTop=0;focusLiveExercise(focus?0:(activeWorkout.activeExerciseIndex||0),"auto");persistUI()})
-}
-$("workoutNoteBtn").onclick=()=>{if(!activeWorkout)return;const v=prompt("Trainingsnotiz",activeWorkout.note||"");if(v!==null){activeWorkout.note=v.trim();saveAll();renderLive()}};
-function leaveLiveToTraining(){
- saveAll();persistUI();clearInterval(clockTimer);hideRestBar();
- if(pageStack.length){closePage();return}
- document.querySelectorAll(".page").forEach(x=>x.classList.add("hidden"));$("bottomNav").classList.remove("hidden");showTab("training",{reset:false})
-}
-$("liveBackBtn").onclick=()=>leaveLiveToTraining();
-function liveVisualGroups(exercises){
- const out=[],seen=new Set();
- (exercises||[]).forEach((e,i)=>{
-  if(groupMethod(e.setTechnique)&&e.techniqueGroup){
-   if(seen.has(e.techniqueGroup))return;
-   const members=[];(exercises||[]).forEach((x,j)=>{if(x.techniqueGroup===e.techniqueGroup)members.push({e:x,i:j})});
-   members.sort((a,b)=>{const ap=Number.isFinite(Number(a.e.groupPosition))?Number(a.e.groupPosition):a.i,bp=Number.isFinite(Number(b.e.groupPosition))?Number(b.e.groupPosition):b.i;return ap-bp||a.i-b.i});
-   seen.add(e.techniqueGroup);out.push({group:true,method:e.setTechnique,key:e.techniqueGroup,members})
-  }else out.push({group:false,method:e.setTechnique||"standard",key:`single_${i}`,members:[{e,i}]})
- });
- return out
-}
-function combinedMemberControls(x,si,gi,showLabels=true){
- const s=x.e.liveSets?.[si];if(!s)return"";
- const idx=`${si+1}${String.fromCharCode(65+gi)}`,lab=txt=>`<span class="${showLabels?"":"combined-label-hidden"}">${txt}</span>`;
- if(x.e.measureMode==="time"){
-  const action=s.completed
-   ?`<button class="set-check time-rating-action done ${ratingClass(s)}" data-check="${x.i}|${si}" aria-label="Bewertung anzeigen">✓</button>`
-   :s._timedOnce
-    ?`<button type="button" class="set-check time-rating-action ${canRateSet(x.e,s)?"ready":""}" data-time-play="${x.i}|${si}" aria-label="Satz bewerten">✓</button>`
-    :`<button type="button" class="set-check time-rating-action ready" data-time-play="${x.i}|${si}" aria-label="Timer starten">▶</button>`;
-  return`<div class="combined-member-row unified-combined-time-row"><span class="combined-index">${idx}</span><label class="combined-field unified-time-field">${lab("ZEIT")}<span class="time-input-shell unified-time-shell"><input type="text" inputmode="none" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" class="${s.completed?"rated-time-value":""}" data-time-field="1" data-input="${x.i}|${si}|time" placeholder="${liveTimeBoxPlaceholder(s)}" value="${liveTimeBoxValue(s)}"></span></label><label class="combined-field">${lab("LEISTUNG")}<input class="unified-performance-input" type="text" autocomplete="off" autocorrect="off" data-input="${x.i}|${si}|level" placeholder="Leistung" value="${esc(s.level||"")}"></label>${action}</div>`
- }
- return`<div class="combined-member-row"><span class="combined-index">${idx}</span><label class="combined-field">${lab("KG")}<input type="text" inputmode="decimal" data-input="${x.i}|${si}|weight" placeholder="${esc(s._suggested?.weight||"KG")}" value="${esc(s.weight||"")}"></label><label class="combined-field">${lab("WDH.")}<input type="text" inputmode="numeric" data-input="${x.i}|${si}|reps" placeholder="${esc(liveRepBoxSuggestion(x.e,s))}" value="${esc(s.reps||"")}"></label><button class="set-check ${s.completed?"done":""} ${ratingClass(s)} ${canRateSet(x.e,s)?"ready":""}" data-check="${x.i}|${si}">✓</button></div>`
-}
-function renderLiveGroupCard(g){
- const first=g.members[0],complete=liveGroupComplete(g);
- const active=g.members.some(x=>Number(activeWorkout.activeExerciseIndex||0)===x.i)&&!complete;
- const rounds=Math.max(...g.members.map(x=>x.e.liveSets?.length||x.e.sets||0));let rows="";
- for(let si=0;si<rounds;si++){
-  const firstTime=first.e.measureMode==="time";const roundHead=`<div class="group-round-title"><span>${rounds>1?`Satz ${si+1}`:"Satz"}</span><span>${firstTime?"ZEIT":"KG"}</span><span>${firstTime?"LEISTUNG":"WDH."}</span><span>BEW.</span></div>`;
-  rows+=`<div class="combined-round">${roundHead}`;
-  const seenModes=new Set();
-  g.members.forEach((x,gi)=>{const mode=x.e.measureMode==="time"?"time":"reps",show=!seenModes.has(mode);seenModes.add(mode);rows+=combinedMemberControls(x,si,gi,show)});
-  rows+=`</div>`
- }
- const head=g.members.map((x,gi)=>`<div class="live-group-member-head"><div class="live-group-member-copy"><div class="live-group-title-row"><button class="exercise-title-link" data-live-detail="${esc(x.e.name)}" data-live-index="${x.i}"><span class="group-letter">${String.fromCharCode(65+gi)}</span><span class="group-title-name">${esc(exerciseDisplayName(x.e))}</span></button></div>${exerciseInlineMeta(x.e)}<div class="prescription connected-prescription">${esc(planPrescription(x.e))}</div><button class="note-line connected-note-line" data-live-note="${x.i}" style="border:0;background:transparent;padding:0">✎ ${esc(x.e.note||"Notiz")}</button></div><button class="icon-btn live-group-member-edit" data-live-config="${x.i}">✎</button><button class="live-group-member-delete" data-delete-live-ex="${x.i}">−</button></div>`).join("");
- return`<div class="method-card live-exercise-card connected-live-card method-${g.method} ${active?"active-live-exercise":""} ${complete?"live-method-complete":""}" data-live-card="${first.i}" data-live-members="${g.members.map(x=>x.i).join(",")}"><div class="method-name">${METHOD_LABEL[g.method]}</div><div class="method-help">${esc(methodHelp(g.method))}</div><div class="combined-series-head">${head}</div><div class="workset-separator" aria-hidden="true"></div>${rows}<button class="secondary" data-add-group-set="${esc(g.key)}" style="margin-top:8px">Satz hinzufügen</button></div>`
-}
-function renderLiveSingleCard(e,i){
- const complete=liveExerciseComplete(e);return`<div class="method-card live-exercise-card method-${e.setTechnique||"standard"} ${Number(activeWorkout.activeExerciseIndex||0)===i&&!complete?"active-live-exercise":""} ${complete?"live-method-complete":""}" data-live-card="${i}"><div class="method-name">${METHOD_LABEL[e.setTechnique||"standard"]}</div><div class="method-help">${esc(methodHelp(e.setTechnique))}</div><div class="live-card-head"><div><div class="live-single-title-row"><button class="exercise-title-link" data-live-detail="${esc(e.name)}" data-live-index="${i}">${esc(exerciseDisplayName(e))}</button></div>${exerciseInlineMeta(e)}<div class="prescription">${esc(planPrescription(e))}</div></div><div class="live-card-actions"><button class="icon-btn" data-live-config="${i}" aria-label="Übung bearbeiten">✎</button><button class="live-delete-ex" data-delete-live-ex="${i}" aria-label="Übung löschen">−</button></div></div><button class="note-line" data-live-note="${i}" style="border:0;background:transparent;padding:0">✎ ${esc(e.note||"Notiz")}</button><div class="workset-separator" aria-hidden="true"></div>${renderSets(e,i)}<button class="secondary" data-add-set="${i}" style="margin-top:8px">Satz hinzufügen</button></div>`
-}
-function renderLive(){
- const pipe=window.__rt?.live;
- if(pipe?.core){
-  for(const fn of pipe.pre||[]){try{fn.apply(this,arguments)}catch(err){console.error("live pre hook",err)}}
-  let result;try{result=pipe.core.apply(this,arguments)}catch(err){console.error("live core",err);throw err}
-  for(const fn of pipe.post||[]){try{const next=fn.call(this,result,...arguments);if(next!==undefined)result=next}catch(err){console.error("live post hook",err)}}
-  bindWorkoutFinishControls();
-  return result
- }
- if(!activeWorkout)return;
- activeWorkout.exercises=Array.isArray(activeWorkout.exercises)?activeWorkout.exercises:[];
- activeWorkout.exercises=activeWorkout.exercises.map((raw,i)=>{const oldSets=Array.isArray(raw?.liveSets)?raw.liveSets:null,e=normPlanEx(raw||{});if(oldSets&&oldSets.length)e.liveSets=oldSets;else e.liveSets=Array.from({length:Math.max(1,Number(e.sets)||defaultSetsForExerciseMethod(e,e.setTechnique||"standard"))},(_,si)=>initSet(e,si));if(!Number.isFinite(Number(e.groupPosition))&&e.techniqueGroup)e.groupPosition=i;return e});
- if($("workoutNoteText"))$("workoutNoteText").textContent=activeWorkout.note||"Notiz";
- const body=$("liveBody");if(!body)return;
- body.innerHTML=liveVisualGroups(activeWorkout.exercises).map(g=>g.group?renderLiveGroupCard(g):renderLiveSingleCard(g.members[0].e,g.members[0].i)).join("");
- document.querySelectorAll("[data-live-detail]").forEach(b=>b.onclick=()=>{const i=Number(b.dataset.liveIndex||b.closest("[data-live-card]")?.dataset.liveCard||0);setActiveExercise(i);exerciseDetailReturn={type:"live",index:i};openExerciseDetail(b.dataset.liveDetail)});
- document.querySelectorAll("[data-live-config]").forEach(b=>b.onclick=()=>{const i=Number(b.dataset.liveConfig);setActiveExercise(i);configureLiveExercise(i)});
- document.querySelectorAll("[data-delete-live-ex]").forEach(b=>b.onclick=()=>{const i=Number(b.dataset.deleteLiveEx),e=activeWorkout.exercises[i];if(!e)return;if(confirm(`„${e.name}“ aus dem Training löschen?`)){activeWorkout.exercises.splice(i,1);markLiveStructureEdited();saveAll();renderLive()}});
- document.querySelectorAll("[data-live-note]").forEach(b=>b.onclick=()=>{const i=Number(b.dataset.liveNote),v=prompt("Notiz",activeWorkout.exercises[i].note||"");if(v!==null){activeWorkout.exercises[i].note=v.trim();saveAll();renderLive()}});
- document.querySelectorAll("[data-check]").forEach(b=>b.onclick=()=>toggleSet(b.dataset.check));
- document.querySelectorAll("[data-segment-check]").forEach(b=>b.onclick=()=>{const [ei,si,gi]=b.dataset.segmentCheck.split("|").map(Number),g=activeWorkout.exercises[ei].liveSets[si].segments[gi];if(g.completed){g.completed=false;g.rating="";activeWorkout.exercises[ei].liveSets[si].completed=false;saveAll();renderLive()}else openSegmentRating(ei,si,gi)});
- document.querySelectorAll("[data-input]").forEach(x=>{x.oninput=()=>{setActiveExercise(Number(x.dataset.input.split("|")[0]));touchInput(x);updateInput(x)};x.onchange=()=>updateInput(x);x.onfocus=()=>{try{x.select?.()}catch{};window.rethinkKeepFieldVisibleV24?.(x)}});
- document.querySelectorAll("[data-add-set]").forEach(b=>b.onclick=()=>{const e=activeWorkout.exercises[Number(b.dataset.addSet)];e.liveSets.push(initSet(e,e.liveSets.length));e.sets=e.liveSets.length;markLiveStructureEdited();saveAll();renderLive()});
- document.querySelectorAll("[data-add-group-set]").forEach(b=>b.onclick=()=>{const gid=b.dataset.addGroupSet,members=activeWorkout.exercises.map((x,i)=>x.techniqueGroup===gid?i:-1).filter(i=>i>=0);members.forEach(i=>{const e=activeWorkout.exercises[i];e.liveSets.push(initSet(e,e.liveSets.length));e.sets=e.liveSets.length});markLiveStructureEdited();saveAll();renderLive()});
- document.querySelectorAll("[data-remove-live-set]").forEach(b=>b.onclick=()=>removeLiveSet(b.dataset.removeLiveSet));
- document.querySelectorAll("[data-time-play]").forEach(b=>b.onclick=()=>toggleTimeTimer(b.dataset.timePlay,b));
- saveAll();
-}
-function advancedTarget(e){return Math.max(1,Number(e.reps)||1)}
-function normalizeTargetSegments(e,s){
- const target=advancedTarget(e);let total=0,reachedAt=-1;
- (s.segments||[]).forEach((seg,i)=>{if(reachedAt>=0){seg.reps="";seg.completed=false;return}const r=Math.max(0,Number(seg.reps)||0);total+=r;if(total>=target)reachedAt=i});
- return{target,total,reached:reachedAt>=0,reachedAt}
-}
-function targetVisibleSegments(e,s){
- const x=normalizeTargetSegments(e,s),max=x.reached?x.reachedAt+1:(s.segments||[]).length;
- return{...x,items:(s.segments||[]).slice(0,max).map((seg,index)=>({seg,index}))}
-}
-function restPauseTarget(e){return Math.max(1,Number(e.reps)||20)}
-function restPauseVisibleSegments(e,s){return targetVisibleSegments(e,s)}
-function restPauseComplete(e,s){
- const x=restPauseVisibleSegments(e,s);
- return x.reached&&x.items.every(({seg})=>validKg(seg.weight)&&validReps(seg.reps))
-}
-function liveRepBoxSuggestion(e,s){
- const raw=String(s?._suggested?.reps||amrapText(e?.reps||"WDH.")).trim();
- return /AMRAP/i.test(raw)?"MAX":raw
-}
-function liveTimeBoxValue(s){return s?._manualTime||s?._timerRunning||s?._timeAccepted||s?.completed?formatTime(s.time):""}
-function liveTimeBoxPlaceholder(s){return formatTime(Number(s?._timerOrigin)||Number(s?.time)||60)}
-
-function visibleRatingValue(e,si){
- const s=e?.liveSets?.[si],valid=new Set(["green","yellow","red","blue"]);
- if(valid.has(s?.rating))return s.rating;
- const segmentRating=(s?.segments||[]).map(g=>g?.rating).find(r=>valid.has(r));
- if(segmentRating)return segmentRating;
- const prior=e?._lastRatings?.[si];return valid.has(prior)?prior:""
-}
-function previousRatingDotMarkup(e,si){const r=visibleRatingValue(e,si);return r?`<span class="previous-rating-dot rating-${esc(r)}" title="${e?.liveSets?.[si]?.rating?"Bewertung dieses Satzes":"Bewertung letztes passendes Workout"}"></span>`:""}
-function renderSets(e,ei){
- if(groupMethod(e.setTechnique)){return e.liveSets.map((s,si)=>`<div class="group-round"><div class="group-round-title">Runde ${si+1}</div>${s.segments.map((g,gi)=>`<div class="group-ex-row group-ex-rated"><span class="group-ex-name">${String.fromCharCode(65+gi)} · ${esc(g.name)}</span><input type="text" inputmode="decimal" autocomplete="off" autocorrect="off" data-input="${ei}|${si}|gw|${gi}" placeholder="${esc(g._suggested?.weight||"KG")}" value="${esc(g.weight)}"><input type="text" inputmode="decimal" autocomplete="off" autocorrect="off" data-input="${ei}|${si}|gr|${gi}" placeholder="${esc(g._suggested?.reps||"WDH.")}" value="${esc(g.reps)}"><button class="set-check ${g.completed?"done":""} ${g.rating?`rating-${g.rating}`:""} ${segmentHasValues(g)?"ready":""}" data-segment-check="${ei}|${si}|${gi}">✓</button></div><div class="rating-row group-rating-row"><span class="rating-label">BEW.</span><div class="small">${g.completed?`Bewertet: ${ratingLabel(g.rating)}`:segmentHasValues(g)?"Haken drücken und bewerten":"KG und WDH. eintragen"}</div></div>`).join("")}<div class="group-round-foot"><span class="small">${s.completed?"Runde abgeschlossen":"Alle Übungen einzeln bewerten"}</span><button class="remove-mini" data-remove-live-set="${ei}|${si}">−</button></div></div>`).join("")}
-
- if(e.measureMode==="time"){
-  return`<div class="set-head unified-time-head"><span>SATZ</span><span>ZEIT</span><span>LEISTUNG</span><span>BEW.</span><span></span></div>${e.liveSets.map((s,si)=>`<div class="set-row unified-time-row"><span class="set-index-with-history">${si+1}${previousRatingDotMarkup(e,si)}</span><div class="time-input-shell unified-time-shell"><input type="text" inputmode="none" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" class="${s.completed?"rated-time-value":""}" data-time-field="1" data-input="${ei}|${si}|time" placeholder="${liveTimeBoxPlaceholder(s)}" value="${liveTimeBoxValue(s)}"></div><input class="unified-performance-input" type="text" autocomplete="off" autocorrect="off" data-input="${ei}|${si}|level" placeholder="${esc(s._suggested?.level||"Leistung")}" value="${esc(s.level||"")}">${s.completed?`<button class="set-check done ${ratingClass(s)}" data-check="${ei}|${si}" aria-label="Bewertung anzeigen">✓</button>`:s._timedOnce?`<button type="button" class="set-check time-rating-action ${canRateSet(e,s)?"ready":""}" data-time-play="${ei}|${si}" aria-label="Satz bewerten">✓</button>`:`<button type="button" class="set-check time-rating-action ready" data-time-play="${ei}|${si}" aria-label="Timer starten">▶</button>`}<button class="remove-mini" data-remove-live-set="${ei}|${si}">−</button></div>${ratingMarkup(ei,si,s)}`).join("")}`
- }
- if(e.setTechnique==="cluster"){
-  return e.liveSets.map((s,si)=>{
-   const targetInfo=targetVisibleSegments(e,s),segs=targetInfo.items.map(x=>[x.seg,x.index]),multi=Math.max(1,Number(e.sets)||1)>1;
-   return`<div class="advanced-compact-set cluster-set-block">
-     <div class="method-set-title"><span class="set-index-with-history">${multi?`Satz ${si+1}`:"Satz"}${previousRatingDotMarkup(e,si)}</span><span>KG</span><span>WDH.</span>${multi?`<button class="remove-mini" data-remove-live-set="${ei}|${si}" aria-label="Satz löschen">−</button>`:`<span></span>`}</div>
-     ${segs.map(([g,gi],ri)=>{
-       const last=ri===segs.length-1;
-       return`<div class="advanced-compact-row">
-         <span>${gi+1}</span>
-         <input type="text" inputmode="decimal" autocomplete="off" autocorrect="off" data-input="${ei}|${si}|sw|${gi}" placeholder="${esc(g._suggested?.weight||"KG")}" value="${esc(g.weight)}">
-         <input type="text" class="fixed-method-value" readonly aria-readonly="true" value="${esc(g.reps||e.methodData?.clusterReps||2)}">
-         ${last?`<button class="set-check ${s.completed?"done":""} ${ratingClass(s)} ${canRateSet(e,s)?"ready":""}" data-check="${ei}|${si}">✓</button><span></span>`:`<span></span><span></span>`}
-       </div>${!last?`<div class="intraset-rest-divider"><span></span><b>${Number(e.methodData?.intraRest)||20}s Pause</b><span></span></div>`:""}`
-     }).join("")}
-     ${ratingMarkup(ei,si,s)}
-   </div>`
-  }).join("")
- }
- if(e.setTechnique==="restpause"){
-  return e.liveSets.map((s,si)=>{
-   const targetInfo=targetVisibleSegments(e,s),segs=targetInfo.items.map(x=>[x.seg,x.index]),multi=Math.max(1,Number(e.sets)||1)>1;
-   return`<div class="advanced-compact-set restpause-set-block">
-     <div class="method-set-title"><span class="set-index-with-history">${multi?`Satz ${si+1}`:"Satz"}${previousRatingDotMarkup(e,si)}</span><span>KG</span><span>WDH.</span>${multi?`<button class="remove-mini" data-remove-live-set="${ei}|${si}" aria-label="Satz löschen">−</button>`:`<span></span>`}</div>
-     ${segs.map(([g,gi],ri)=>{
-       const last=ri===segs.length-1;
-       return`<div class="advanced-compact-row">
-         <span class="advanced-compact-index">${gi+1}${g.label?`<small>${esc(g.label)}</small>`:""}</span>
-         <input type="text" inputmode="decimal" autocomplete="off" autocorrect="off" data-input="${ei}|${si}|sw|${gi}" placeholder="${esc(g._suggested?.weight||"KG")}" value="${esc(g.weight)}">
-         <input type="text" inputmode="decimal" autocomplete="off" autocorrect="off" data-input="${ei}|${si}|sr|${gi}" placeholder="${esc(g._suggested?.reps||"WDH.")}" value="${esc(g.reps)}">
-         ${last?`<button class="set-check ${s.completed?"done":""} ${ratingClass(s)} ${restPauseComplete(e,s)?"ready":""}" data-check="${ei}|${si}">✓</button><span></span>`:`<span></span><span></span>`}
-       </div>${!last?`<div class="intraset-rest-divider"><span></span><b>${Number(e.methodData?.intraRest)||20}s Pause</b><span></span></div>`:""}`
-     }).join("")}
-     <div class="restpause-progress small">${targetInfo.total} / ${targetInfo.target} WDH.${targetInfo.reached?" · Ziel erreicht":""}</div>
-     ${ratingMarkup(ei,si,s)}
-   </div>`
-  }).join("")
- }
- if(e.setTechnique==="dropset"){
-  return e.liveSets.map((s,si)=>{
-   const segs=s.segments.map((x,i)=>[x,i]),multi=Math.max(1,Number(e.sets)||1)>1;
-   return`<div class="advanced-compact-set dropset-set-block">
-     <div class="method-set-title"><span class="set-index-with-history">${multi?`Satz ${si+1}`:"Satz"}${previousRatingDotMarkup(e,si)}</span><span>KG</span><span>WDH.</span>${multi?`<button class="remove-mini" data-remove-live-set="${ei}|${si}" aria-label="Satz löschen">−</button>`:`<span></span>`}</div>
-     ${segs.map(([g,gi])=>{const last=gi===segs.length-1;return`<div class="advanced-compact-row ${last?"drop-final-row":""}">
-       <span class="advanced-compact-index">${gi+1}${g.label?`<small>${esc(g.label)}</small>`:""}</span>
-       <input type="text" inputmode="decimal" autocomplete="off" autocorrect="off" data-input="${ei}|${si}|sw|${gi}" placeholder="${esc(g._suggested?.weight||"KG")}" value="${esc(g.weight)}">
-       <input type="text" inputmode="decimal" autocomplete="off" autocorrect="off" data-input="${ei}|${si}|sr|${gi}" placeholder="${esc(g._suggested?.reps||"WDH.")}" value="${esc(g.reps)}">
-       ${last?`<button class="set-check ${s.completed?"done":""} ${ratingClass(s)} ${canRateSet(e,s)?"ready":""}" data-check="${ei}|${si}">✓</button><span></span>`:`<span></span><span></span>`}
-     </div>${gi<segs.length-1?`<div class="intraset-rest-divider drop-reduction-divider"><span></span><b>−${Number(e.methodData?.dropPercent)||20}% Gewicht</b><span></span></div>`:""}`}).join("")}
-     ${ratingMarkup(ei,si,s)}
-   </div>`
-  }).join("")
- }
- return`<div class="set-head"><span>SATZ</span><span>KG</span><span>WDH.</span><span></span><span></span></div>${e.liveSets.map((s,si)=>`<div class="set-row"><span class="set-index-with-history">${si+1}${previousRatingDotMarkup(e,si)}</span><input type="text" inputmode="decimal" autocomplete="off" autocorrect="off" data-input="${ei}|${si}|weight" placeholder="${esc(s._suggested?.weight||"KG")}" value="${esc(s.weight)}"><input type="text" inputmode="decimal" autocomplete="off" autocorrect="off" data-input="${ei}|${si}|reps" placeholder="${esc(liveRepBoxSuggestion(e,s))}" value="${esc(s.reps)}" ${e.setTechnique==="backoff"?"readonly":""}><button class="set-check ${s.completed?"done":""} ${ratingClass(s)} ${canRateSet(e,s)?"ready":""}" data-check="${ei}|${si}" >✓</button><button class="remove-mini" data-remove-live-set="${ei}|${si}">−</button></div>${ratingMarkup(ei,si,s)}`).join("")}`
-}
-
-const RATING_GUIDE={
- green:{label:"Perfekt",hint:"1–2 WDH. sauber übrig"},
- yellow:{label:"Limit",hint:"0 WDH. übrig · Ziel sauber erreicht"},
- red:{label:"Zu schwer",hint:"Ziel oder Technik nicht sauber erreicht"},
- blue:{label:"Zu leicht",hint:"3+ saubere WDH. wären möglich"}
+ if(!st.changed){currentPlan=null;closePage();showTab("plans");renderPlans();return}
+ requestPlanEditorExit({toPlans:true});
 };
 const TIME_RATING_GUIDE={
  green:{label:"Perfekt",hint:"Zeit erreicht · fordernd und kontrolliert"},
@@ -2230,7 +1198,7 @@ function toggleSet(key){const p=key.split("|").map(Number),ei=p[0],si=p[1],e=act
 function showRestBarIdle(){const bar=$("restBar");if(!bar)return;bar.classList.add("hidden");bar.classList.remove("rest-idle","rest-restored")}
 function hideRestBar(){const bar=$("restBar");if(bar)bar.classList.add("hidden")}
 function startRest(sec=90,restored=false){
- ensureAudio();clearInterval(restTimer);const bar=$("restBar");if(!bar)return;const n=Math.max(0,Number(sec)||0);
+ ensureAudio();clearInterval(restTimer);const bar=$("restBar");if(!bar)return;if(bar.parentElement!==document.body)document.body.appendChild(bar);const n=Math.max(0,Number(sec)||0);
  if(!restored)restEnd=n>0?Date.now()+n*1000:0;else if(restEnd<=Date.now()&&n>0)restEnd=Date.now()+n*1000;
  persistRestEnd();bar.classList.remove("hidden","rest-idle");bar.classList.toggle("rest-restored",!!restored);
  const tick=()=>{const left=Math.max(0,Math.ceil((restEnd-Date.now())/1000));$("restTime").textContent=formatTime(left);if(left<=0){clearInterval(restTimer);restEnd=0;persistRestEnd();hideRestBar();signalTone();backgroundTimerNotice("Pause beendet");toast("Pause beendet")}};
@@ -2360,12 +1328,12 @@ function hasStructuralWorkoutChanges(){
 function finalizeWorkout({planAction="discard"}={}){
  if(!activeWorkout)return;activeWorkout.finishedAt=Date.now();
  const current=clone(activeWorkout.exercises||[]),structural=structuralExercises(current),sourceId=activeWorkout.sourcePlanId||activeWorkout.planId||null;
- activeWorkout.workoutSnapshot={name:activeWorkout.planName||activeWorkout.name||"Training",sourcePlanId:sourceId,exercises:clone(structural)};
+ activeWorkout.workoutSnapshot={name:activeWorkout.planName||activeWorkout.name||"Training",sourcePlanId:sourceId,exercises:current.map(cleanPlanExerciseForSave)};
  if(planAction==="overwrite"){
   if(activeWorkout.isWeekCombined){const sourceIds=(activeWorkout.weekSourceIds||[]).map(String),grouped=new Map(sourceIds.map(id=>[id,[]]));current.forEach(e=>{let id=String(e._weekSourcePlanId||sourceIds[0]||"");if(!grouped.has(id))id=sourceIds[0];if(id&&grouped.has(id))grouped.get(id).push(cleanPlanExerciseForSave(e))});grouped.forEach((list,id)=>{const plan=plans.find(x=>String(x.id)===id);if(plan){plan.exercises=list;plan.updatedAt=Date.now();plan.lastUsedAt=Date.now()}})}
-  else{const plan=plans.find(x=>String(x.id)===String(sourceId));if(plan){plan.exercises=structural;plan.updatedAt=Date.now();plan.lastUsedAt=Date.now();activeWorkout.planId=plan.id;activeWorkout.planName=plan.name}}
+  else{const plan=plans.find(x=>String(x.id)===String(sourceId));if(plan){plan.exercises=current.map(cleanPlanExerciseForSave);plan.updatedAt=Date.now();plan.lastUsedAt=Date.now();activeWorkout.planId=plan.id;activeWorkout.planName=plan.name}}
  }else if(planAction==="new"){
-  const requested=activeWorkout.planName||activeWorkout.name||"Training",name=plans.some(p=>String(p.name)===String(requested))?nextPlanVersionName(requested):requested,np={id:uid(),name,createdAt:Date.now(),updatedAt:Date.now(),lastUsedAt:Date.now(),sourcePlanId:sourceId,sourcePlanIds:clone(activeWorkout.weekSourceIds||[]),exercises:structural};plans.push(np);activeWorkout.planId=np.id;activeWorkout.planName=np.name
+  const requested=activeWorkout.planName||activeWorkout.name||"Training",name=plans.some(p=>String(p.name)===String(requested))?nextPlanVersionName(requested):requested,np={id:uid(),name,createdAt:Date.now(),updatedAt:Date.now(),lastUsedAt:Date.now(),sourcePlanId:sourceId,sourcePlanIds:clone(activeWorkout.weekSourceIds||[]),exercises:current.map(cleanPlanExerciseForSave)};plans.push(np);activeWorkout.planId=np.id;activeWorkout.planName=np.name
  }
  // Every normally finished workout is stored as its own immutable history snapshot.
  activeWorkout.sourcePlanId=sourceId;history.push(clone(activeWorkout));const done=clone(activeWorkout);
@@ -2600,20 +1568,13 @@ const pipe=window.__rt?.profile;
  document.querySelectorAll("[data-measurement-open]").forEach(b=>b.onclick=()=>{const i=Number(b.dataset.measurementOpen),m=measurements[i];if(!m)return;openSheet("Messung",`<div class="card"><div class="space"><strong>${m.weight?m.weight+" kg":"Messung"}</strong><span class="small">${new Date(m.date||Date.now()).toLocaleDateString("de-DE")}</span></div><div class="measurement-values">${m.bodyfat?`<span>Körperfett ${m.bodyfat}%</span>`:""}${m.waist?`<span>Taille ${m.waist} cm</span>`:""}${m.chest?`<span>Brust ${m.chest} cm</span>`:""}${m.hip?`<span>Hüfte ${m.hip} cm</span>`:""}</div></div><button id="deleteOpenedMeasurement" class="secondary danger" style="width:100%;margin-top:10px">Messung löschen</button>`);$("deleteOpenedMeasurement").onclick=()=>{if(confirm("Diese Messung wirklich löschen?")){measurements.splice(i,1);profile.weight=Number(measurements.at(-1)?.weight)||"";saveAll();closeSheet({all:true});renderProfile()}}});
  document.querySelectorAll("[data-measurement-delete]").forEach(b=>b.onclick=e=>{e.stopPropagation();const i=Number(b.dataset.measurementDelete);if(confirm("Diese Messung wirklich löschen?")){measurements.splice(i,1);profile.weight=Number(measurements.at(-1)?.weight)||"";saveAll();renderProfile()}})
 
- const overview=$("profileInputOverview");
- if(overview){
-  const latestVisible=measurements.slice().reverse().find(m=>Number(m.weight)>0),w=Number(latestVisible?.weight||profile.weight||0);
-  const sex=profile.sex==="male"?"Männlich":profile.sex==="female"?"Weiblich":"–",goalLabel=profile.goal==="cut"?"Abnehmen":profile.goal==="gain"?"Zunehmen":profile.goal==="maintain"?"Halten":"–";
-  const activityMap={"1.2":"Wenig aktiv","1.375":"Leicht aktiv","1.55":"Moderat aktiv","1.725":"Sehr aktiv","1.9":"Extrem aktiv"},activity=activityMap[String(profile.activity)]||"–";
-  overview.innerHTML=`<div><span>Alter</span><strong>${profile.age?`${esc(profile.age)} J.`:"–"}</strong></div><div><span>Größe</span><strong>${profile.height?`${esc(profile.height)} cm`:"–"}</strong></div><div><span>Gewicht</span><strong>${w?`${esc(w)} kg`:"–"}</strong></div><div><span>Geschlecht</span><strong>${sex}</strong></div><div><span>Ziel</span><strong>${goalLabel}</strong></div><div><span>Wunschgewicht</span><strong>${profile.targetWeight?`${esc(profile.targetWeight)} kg`:"–"}</strong></div><div><span>Aktivität</span><strong>${activity}</strong></div>`
- }
  if($("editProfileBtn"))$("editProfileBtn").onclick=openProfileEditor;
  if($("addMeasurementBtn"))$("addMeasurementBtn").onclick=openMeasurementEntry;
  if($("addWaterBtn"))$("addWaterBtn").onclick=openQuickDrinkEntry;
  if($("addFoodTodayBtn"))$("addFoodTodayBtn").onclick=()=>openFoodSearch("");
  if($("newCustomFoodBtn")&&window.__openCustomFoodV52)$("newCustomFoodBtn").onclick=()=>window.__openCustomFoodV52();
  if($("newMealBtn")&&window.__openMealBuilderV52)$("newMealBtn").onclick=()=>window.__openMealBuilderV52();
- if(pipe)for(const fn of pipe.post||[]){try{fn.call(this,undefined,...arguments)}catch(err){console.error("profile post hook",err)}};
+ if(typeof window.runProfileEnhancers==="function")window.runProfileEnhancers(...arguments);
  // Final profile integrity pass: current-day controls must remain interactive and saved data visible.
  const root=$("tab-profile");
  if(root&&profileDayOffset===0){root.querySelectorAll("[data-profile-history-locked=\"1\"]").forEach(x=>{x.disabled=false;x.removeAttribute("aria-disabled");delete x.dataset.profileHistoryLocked});root.querySelectorAll("[data-profile-history-pointer=\"1\"]").forEach(x=>{x.style.pointerEvents="";delete x.dataset.profileHistoryPointer})}
@@ -2795,7 +1756,9 @@ function openSettingsPage(){openPage("settingsPage",()=>{
  $("clearHydrationDataBtn").onclick=clearHydrationData;
  $("clearNutritionDataBtn").onclick=()=>window.rethinkDeleteAllNutrition?.();
  $("settingsBackupExport").onclick=()=>window.rethinkBackup?.export?.();
- $("settingsBackupRestore").onclick=()=>window.rethinkBackup?.restore?.()
+ $("settingsBackupRestore").onclick=()=>window.rethinkBackup?.restore?.();
+ // Optional system settings are injected by the single settings extension.
+ window.rethinkEnhanceSettings?.();
 })}
 document.addEventListener("click",e=>{
  if(e.target.id==="drinkSave"){const size=Math.max(1,Math.min(1000,Number($("drinkSize").value)||250));ensureDrinks();nutrition.drinks.push({id:String(uid()),name:$("drinkName").value.trim()||"Getränk",icon:"🥤",kind:"custom",size,hydration:Number($("drinkHydration").value)||0,calories:Number($("drinkCalories").value)||0,caffeine:Number($("drinkCaffeine").value)||0});nutrition.lastDrinkSize=size;saveAll();closeSheet();renderProfile()}
@@ -2810,5 +1773,148 @@ function closeSheet({all=false}={}){if(!all&&sheetStack.length){renderSheetState
 function cancelTask(){planAddFlow=null;sheetStack=[];currentSheetState=null;$("sheetWrap").classList.remove("rethink-entry-sheet");$("sheetWrap").classList.add("hidden");exerciseDetailReturn=null}
 $("sheetBack").onclick=()=>{if(planAddFlow)planAddBack();else closeSheet({all:false})};$("sheetClose").onclick=()=>{if(planAddFlow)cancelPlanAddFlow();else cancelTask()};
 function formatTime(s){s=Math.max(0,Number(s)||0);return`${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`}function parseTime(v){const x=String(v).trim();if(x.includes(":")){const[m,s]=x.split(":").map(Number);return(m||0)*60+(s||0)}return(Number(x)||0)*60}function formatDuration(ms){const s=Math.max(0,Math.floor(ms/1000)),m=Math.floor(s/60),r=s%60;return`${m}:${String(r).padStart(2,"0")}`}
+
+/* RETHINK core interaction recovery — restores canonical functions required by the current runtime.
+   These functions intentionally use the existing data model/renderers rather than introducing a second app state. */
+function methodAllowsTime(method){return !["dropset","restpause","cluster"].includes(String(method||"standard"))}
+function methodNeedsPartners(method){return ["superset","giant","preexhaust"].includes(String(method||"standard"))}
+function effectiveValue(v,suggested){return String(v??"").trim()!==""?v:(suggested??"")}
+function promoteSuggested(e,set){
+ if(!set)return;
+ if(set._suggested){
+  ["weight","reps","level"].forEach(k=>{if(String(set[k]??"").trim()===""&&String(set._suggested[k]??"").trim()!=="")set[k]=set._suggested[k]})
+ }
+}
+function planPrescription(e){
+ const x=normPlanEx(clone(e||{})),sets=Math.max(1,Number(x.sets)||1),rest=Math.max(0,Number(x.rest)||0);
+ if(x.measureMode==="time")return `${sets} × ${formatTime(Number(x.timeSeconds)||60)}${x.perSide?" pro Seite":""} · ${rest}s Pause`;
+ return `${sets} × ${x.reps||"8-12"} WDH.${x.perSide?" pro Seite":""} · ${rest}s Pause`
+}
+function sortedPlansForPicker(q=""){
+ const z=String(q||"").trim().toLowerCase();
+ return sortedPlans().filter(p=>!z||String(p.name||"").toLowerCase().includes(z))
+}
+function initSet(e,i=0){
+ const time=Math.max(1,Number(e?.timeSeconds)||60);
+ const s={completed:false,rating:"",weight:"",reps:"",time,level:"",_timerOrigin:time,_touched:false,_suggested:{}};
+ if(["dropset","restpause","cluster"].includes(e?.setTechnique)){
+  const count=e.setTechnique==="dropset"?Math.max(2,Number(e.methodData?.drops)||3):Math.max(2,Number(e.methodData?.clusterBlocks)||3);
+  s.segments=Array.from({length:count},()=>({weight:"",reps:"",completed:false,rating:"",_suggested:{}}))
+ }
+ return s
+}
+function liveVisualGroups(xs=[]){
+ const out=[],seen=new Set();
+ xs.forEach((e,i)=>{
+  const gid=e?.techniqueGroup;
+  if(gid){
+   if(seen.has(gid))return;seen.add(gid);
+   const members=xs.map((x,j)=>x?.techniqueGroup===gid?{e:x,i:j}:null).filter(Boolean);
+   out.push({group:true,id:gid,method:e.setTechnique||"standard",members})
+  }else out.push({group:false,id:`single_${i}`,method:e?.setTechnique||"standard",members:[{e,i}]})
+ });
+ return out
+}
+function renderSets(e,ei){
+ e.liveSets=Array.isArray(e.liveSets)&&e.liveSets.length?e.liveSets:Array.from({length:Math.max(1,Number(e.sets)||3)},(_,i)=>initSet(e,i));
+ return e.liveSets.map((set,si)=>{
+  const done=set.completed?"completed":"",rating=set.rating?` rating-${set.rating}`:"";
+  if(e.measureMode==="time"){
+   return `<div class="set-row ${done}${rating}"><strong>${si+1}.</strong><input class="field compact-field" data-input="${ei}|${si}|time" value="${formatTime(Number(set.time)||Number(e.timeSeconds)||60)}" inputmode="numeric"><input class="field compact-field" data-input="${ei}|${si}|level" value="${esc(set.level||"")}" placeholder="Leistung"><button class="set-check" data-time-play="${ei}|${si}">${set.completed?"✓":set._timerRunning?"■":set._timedOnce?"✓":"▶"}</button></div>`
+  }
+  return `<div class="set-row ${done}${rating}"><strong>${si+1}.</strong><input class="field compact-field" data-input="${ei}|${si}|weight" value="${esc(set.weight||"")}" placeholder="${esc(set._suggested?.weight||"KG")}" inputmode="decimal"><input class="field compact-field" data-input="${ei}|${si}|reps" value="${esc(set.reps||"")}" placeholder="${esc(set._suggested?.reps||e.reps||"WDH.")}" inputmode="numeric"><button class="set-check" data-set="${ei}|${si}">${set.completed?"✓":"○"}</button></div>`
+ }).join("")
+}
+function setActiveExercise(i){if(activeWorkout){activeWorkout.activeExerciseIndex=Math.max(0,Number(i)||0);saveAll()}}
+function focusLiveExercise(i,behavior="smooth"){
+ if(!activeWorkout)return;setActiveExercise(i);
+ requestAnimationFrame(()=>document.querySelector(`[data-live-card="${i}"]`)?.scrollIntoView?.({behavior,block:"center"}))
+}
+function openExercisePicker(onAdd,{exclude=new Set(),title="Übung auswählen",detailAdd=false}={}){
+ let q="";
+ const draw=()=>{
+  const rows=allExercises().filter(e=>!exclude.has(e.name)&&(!q||String(e.name).toLowerCase().includes(q.toLowerCase())));
+  const body=`<div class="search"><input id="coreExercisePickerSearch" class="field" placeholder="Übung suchen" value="${esc(q)}"></div><div>${rows.slice(0,250).map(e=>`<button class="exercise-card" data-core-ex-pick="${esc(e.name)}"><div><strong>${esc(e.name)}</strong><small>${esc((e.categories||[]).join(" · "))}</small></div><span>+</span></button>`).join("")||'<div class="small">Keine Übung gefunden.</div>'}</div>`;
+  renderSheetState({title,body,scroll:0,bind:()=>{
+   const inp=$("coreExercisePickerSearch");if(inp)inp.oninput=()=>{q=inp.value;draw()};
+   document.querySelectorAll("[data-core-ex-pick]").forEach(b=>b.onclick=()=>{const n=b.dataset.coreExPick;if(detailAdd){exerciseDetailReturn={type:"picker"};}onAdd?.(n)})
+  }})
+ };
+ openSheet(title,"");draw()
+}
+function renderEditorExercises(){
+ if(!currentPlan)return;
+ $("planName").value=currentPlan.name||"";
+ const list=$("editorExerciseList");if(!list)return;
+ list.innerHTML=(currentPlan.exercises||[]).map((e,i)=>`<div class="exercise-card editor-exercise-card"><button class="editor-ex-main" data-editor-config="${i}"><div><strong>${i+1}. ${esc(exerciseDisplayName(e))}</strong><small>${esc(METHOD_LABEL[e.setTechnique||"standard"]||e.setTechnique||"Standard")} · ${esc(planPrescription(e))}</small></div></button><div class="row"><button class="icon-btn" data-editor-up="${i}">↑</button><button class="icon-btn" data-editor-down="${i}">↓</button><button class="icon-btn danger" data-editor-del="${i}">−</button></div></div>`).join("")||'<div class="card small">Noch keine Übungen.</div>';
+ if($("editorPlanStats"))$("editorPlanStats").innerHTML=`<div class="small">${currentPlan.exercises.length} Übungen · ${countPlanSets(currentPlan)} Sätze · ~${estimateMinutes(currentPlan)} Min.</div>`;
+ document.querySelectorAll("[data-editor-config]").forEach(b=>b.onclick=()=>configureExercise(Number(b.dataset.editorConfig)));
+ document.querySelectorAll("[data-editor-del]").forEach(b=>b.onclick=()=>{currentPlan.exercises.splice(Number(b.dataset.editorDel),1);markEditorDirty();renderEditorExercises()});
+ document.querySelectorAll("[data-editor-up],[data-editor-down]").forEach(b=>b.onclick=()=>{const i=Number(b.dataset.editorUp??b.dataset.editorDown),d=b.hasAttribute("data-editor-up")?-1:1,j=i+d;if(j<0||j>=currentPlan.exercises.length)return;[currentPlan.exercises[i],currentPlan.exercises[j]]=[currentPlan.exercises[j],currentPlan.exercises[i]];markEditorDirty();renderEditorExercises()});
+ if($("editorAddExerciseBtn"))$("editorAddExerciseBtn").onclick=()=>openExercisePicker(name=>{const d=normPlanEx({...findExercise(name),sets:3,setTechnique:"standard",rest:defaultRestSeconds()});planAddFlow={context:"plan",step:"config",drafts:[],history:[],current:d,from:"picker",q:"",type:"Alle",muscles:new Set(),methodScroll:0};renderPlanAddConfig()},{detailAdd:true});
+ if($("editorReorderBtn"))$("editorReorderBtn").onclick=()=>toast("Reihenfolge mit ↑/↓ ändern.");
+ if($("editorPreviewBtn"))$("editorPreviewBtn").onclick=()=>{const x=clone(currentPlan);$("previewTitle").textContent=x.name||"Workout Vorschau";$("previewBody").innerHTML=`<div class="stat-grid"><div class="stat"><strong>${x.exercises.length}</strong><span>ÜBUNGEN</span></div><div class="stat"><strong>${countPlanSets(x)}</strong><span>SÄTZE</span></div><div class="stat"><strong>~${estimateMinutes(x)} Min.</strong><span>DAUER</span></div></div>${x.exercises.map((e,i)=>`<div class="exercise-card"><div><strong>${i+1}. ${esc(exerciseDisplayName(e))}</strong><small>${esc(planPrescription(e))}</small></div></div>`).join("")}`;openPage("previewPage")}
+}
+function renderPlanAddConfig(){
+ const f=planAddFlow,e=f?.current;if(!f||!e)return;
+ const methods=METHOD_KEYS;
+ const body=`<div class="form-field"><label>ÜBUNG</label><strong>${esc(exerciseDisplayName(e))}</strong></div><div class="form-field"><label>METHODE</label><div class="chips">${methods.map(m=>`<button class="chip ${e.setTechnique===m?"active":""}" data-core-method="${m}">${esc(METHOD_LABEL[m]||m)}</button>`).join("")}</div></div><div class="grid2"><div class="form-field"><label>SÄTZE</label><input id="paSets" class="field" type="number" min="1" max="10" value="${Math.max(1,Number(e.sets)||3)}"></div><div class="form-field"><label>PAUSE SEK.</label><input id="paRest" class="field" type="number" min="0" value="${Math.max(0,Number(e.rest)||0)}"></div></div><div class="form-field"><label>${e.measureMode==="time"?"ZEIT SEK.":"WDH."}</label><input id="coreTarget" class="field" value="${esc(e.measureMode==="time"?(e.timeSeconds||60):(e.reps||"8-12"))}"></div>${exerciseOptionFieldsMarkup(e,"pa")}<button id="corePlanAddConfirm" class="primary" style="width:100%">Übernehmen</button>`;
+ renderSheetState({title:f.from==="edit"?"Übung bearbeiten":"Übung konfigurieren",body,scroll:0,bind:()=>{
+  document.querySelectorAll("[data-core-method]").forEach(b=>b.onclick=()=>{e.setTechnique=b.dataset.coreMethod;renderPlanAddConfig()});
+  $("corePlanAddConfirm").onclick=()=>{e.sets=Math.max(1,Math.min(10,Number($("paSets").value)||3));e.rest=Math.max(0,Number($("paRest").value)||0);if(e.measureMode==="time")e.timeSeconds=Math.max(1,Number($("coreTarget").value)||60);else e.reps=$("coreTarget").value||"8-12";captureExerciseOptionFields?.(e,"pa");confirmPlanAddDraft()}
+ }})
+}
+function renderPartnerExercisePicker(){
+ const f=planAddFlow;if(!f)return;
+ openExercisePicker(name=>{const d=normPlanEx({...findExercise(name),sets:f.drafts?.[0]?.sets||3,rest:f.drafts?.[0]?.rest||defaultRestSeconds(),setTechnique:f.group?.method||"superset",techniqueGroup:f.group?.id});f.current=d;f.step="config";renderPlanAddConfig()},{exclude:new Set((f.drafts||[]).map(x=>x.name)),title:"Partnerübung auswählen",detailAdd:true})
+}
+function cancelPlanAddFlow(){planAddFlow=null;closeSheet({all:true})}
+function applyPreviousWorkoutSuggestions(){return}
+function renderExercises(){ return renderExerciseLibrary(); }
+function renderTrainingHome(){
+ const banner=$("activeBanner"),card=$("startTrainingCard"),hist=$("historyList");
+ if(banner)banner.innerHTML=activeWorkout?`<button class="card active-workout-banner" id="resumeActiveWorkout"><div><strong>Workout läuft</strong><small>${esc(activeWorkout.planName||activeWorkout.name||"Training")} · Fortsetzen</small></div><span>›</span></button>`:"";
+ if(card)card.classList.toggle("hidden",!!activeWorkout);
+ if($("choosePlanStart"))$("choosePlanStart").onclick=()=>openSheet("Trainingsplan auswählen",(plans.length?sortedPlans().map(p=>`<button class="plan-card" data-start-plan="${p.id}"><div><strong>${esc(p.name)}</strong><small>${p.exercises.length} Übungen · ${countPlanSets(p)} Sätze</small></div><span>▶</span></button>`).join(""):'<div class="card small">Noch kein Trainingsplan vorhanden.</div>'),()=>document.querySelectorAll("[data-start-plan]").forEach(b=>b.onclick=()=>{const p=plans.find(x=>String(x.id)===String(b.dataset.startPlan));if(p){closeSheet({all:true});confirmAndStartPlan(clone(p))}}));
+ if($("resumeActiveWorkout"))$("resumeActiveWorkout").onclick=()=>openLive(false);
+ if(hist){hist.innerHTML=history.length?history.slice().reverse().map((w,ri)=>`<div class="card history-card"><button class="history-main" data-history-open="${history.length-1-ri}"><div><strong>${esc(w.planName||w.name||"Training")}</strong><small>${new Date(w.finishedAt||w.startedAt||Date.now()).toLocaleString("de-DE")}</small></div><span>›</span></button><button class="icon-btn danger" data-history-delete="${history.length-1-ri}">−</button></div>`).join(""):'<div class="small">Noch keine abgeschlossenen Trainings.</div>';document.querySelectorAll("[data-history-open]").forEach(b=>b.onclick=()=>openSummary(history[Number(b.dataset.historyOpen)]));document.querySelectorAll("[data-history-delete]").forEach(b=>b.onclick=()=>{const i=Number(b.dataset.historyDelete);if(confirm("Diesen Trainingseintrag wirklich löschen?")){history.splice(i,1);saveAll();renderTrainingHome()}})}
+ if($("clearHistoryBtn"))$("clearHistoryBtn").onclick=()=>{if(history.length&&confirm("Trainingsverlauf wirklich löschen?")){history=[];saveAll();renderTrainingHome()}}
+}
+function startWorkout(plan){
+ if(!plan||!(plan.exercises||[]).length)return toast("Dieser Plan enthält keine Übungen.");
+ const sourceId=plan.historySnapshot?null:(plan.sourcePlanId||plan.id);
+ const xs=clone(plan.exercises).map((raw,i)=>{const e=normPlanEx(raw);e.liveSets=Array.from({length:Math.max(1,Number(e.sets)||3)},(_,si)=>initSet(e,si));return e});
+ activeWorkout={id:uid(),planId:sourceId,sourcePlanId:sourceId,planName:plan.name||"Training",name:plan.name||"Training",startedAt:Date.now(),exercises:xs,note:"",activeExerciseIndex:0,weekDate:plan.weekDate||null,weekSourceIds:clone(plan.weekSourceIds||[]),workoutSnapshot:{name:plan.name||"Training",exercises:clone(plan.exercises)}};
+ const src=plans.find(x=>String(x.id)===String(sourceId));if(src){src.lastUsedAt=Date.now();saveAll()}
+ applyPreviousWorkoutSuggestions(activeWorkout);pendingStartPlan=null;saveAll();closeSheet({all:true});openLive(true)
+}
+function confirmAndStartPlan(plan){
+ if(!plan||!(plan.exercises||[]).length)return toast("Dieser Plan enthält keine Übungen.");
+ if(activeWorkout){
+  openSheet("Workout läuft bereits",`<p class="muted">Das laufende Workout muss zuerst fortgesetzt oder verworfen werden.</p><button id="coreResumeWorkout" class="primary" style="width:100%">Workout fortsetzen</button><button id="coreDiscardAndStart" class="secondary danger" style="width:100%;margin-top:8px">Verwerfen und neues starten</button>`,()=>{
+   $("coreResumeWorkout").onclick=()=>{closeSheet({all:true});openLive(false)};
+   $("coreDiscardAndStart").onclick=()=>{if(confirm("Laufendes Workout wirklich verwerfen?")){activeWorkout=null;localStorage.removeItem(STORAGE.active);saveAll();closeSheet({all:true});confirmAndStartPlan(plan)}}
+  });return
+ }
+ pendingStartPlan=clone(plan);
+ $("preStartTitle").textContent=plan.name||"Training starten";
+ $("preStartBody").innerHTML=`<div class="stat-grid"><div class="stat"><strong>${plan.exercises.length}</strong><span>ÜBUNGEN</span></div><div class="stat"><strong>${countPlanSets(plan)}</strong><span>SÄTZE</span></div><div class="stat"><strong>~${estimateMinutes(plan)} Min.</strong><span>DAUER</span></div></div>${plan.exercises.map((e,i)=>`<div class="exercise-card"><div><strong>${i+1}. ${esc(exerciseDisplayName(e))}</strong><small>${esc(planPrescription(e))}</small></div></div>`).join("")}`;
+ openPage("preStartPage",()=>{const go=()=>startWorkout(pendingStartPlan);$("confirmStartBtn").onclick=go;$("preStartTopPlay").onclick=go})
+}
+function renderLive(){
+ if(!activeWorkout)return;
+ let result;for(const fn of (__rt?.live?.pre||[])){try{fn()}catch(e){console.error("live pre",e)}}
+ try{result=__rt?.live?.core?__rt.live.core():null}catch(e){console.error("live core",e)}
+ for(const fn of (__rt?.live?.post||[])){try{fn(result)}catch(e){console.error("live post",e)}}
+ return result
+}
+function openLive(scrollTop=true){
+ if(!activeWorkout)return renderTrainingHome();
+ $("liveTitle").textContent=activeWorkout.planName||activeWorkout.name||"Training";
+ openPage("livePage",()=>{renderLive();if($("liveBackBtn"))$("liveBackBtn").onclick=()=>{closePage();showTab("training",{forceRender:true})};if($("workoutNoteBtn"))$("workoutNoteBtn").onclick=()=>{const v=prompt("Workout-Notiz",activeWorkout.note||"");if(v!==null){activeWorkout.note=v.trim();saveAll();renderLive()}}});
+ if(scrollTop)requestAnimationFrame(()=>$("livePage")?.scrollTo?.({top:0,behavior:"auto"}));
+ restoreRestTimer()
+}
+
 loadData();if(weekOffset!==0){const _dated=loadDatedWeeks();weekPlan=_dated[weekKeyForOffset()]||[[],[],[],[],[],[],[]];weekPlan=weekPlan.map(x=>Array.isArray(x)?x:(x!=null?[x]:[]))}dailyReset();ensureDrinks();restoreUI();try{renderExerciseLibrary()}catch(e){console.error("exercise init",e)}try{renderPlans()}catch(e){console.error("plans init",e)}try{renderWeek()}catch(e){console.error("week init",e)}try{renderProfile()}catch(e){console.error("profile init",e)}
 if(location.protocol!=="file:"&&"serviceWorker" in navigator)navigator.serviceWorker.register("./sw.js").catch(()=>{});
