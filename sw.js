@@ -1,11 +1,5 @@
-const CACHE='rethink-fitness-20260917-meals-v76';
-const ASSETS=[
- './', './index.html','./app.css','./app-core.js','./runtime-current.js','./foods.js','./manifest.webmanifest',
- './logo.png','./icon-180.png','./icon-192.png','./icon-512.png','./apple-touch-icon.png','./favicon-32.png','./favicon-64.png'
-];
-self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting()))});
-self.addEventListener('activate',event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
-self.addEventListener('fetch',event=>{
- if(event.request.method!=='GET')return;
- event.respondWith(fetch(event.request,{cache:'no-store'}).then(response=>{const copy=response.clone();caches.open(CACHE).then(c=>c.put(event.request,copy)).catch(()=>{});return response}).catch(()=>caches.match(event.request).then(hit=>hit||(event.request.mode==='navigate'?caches.match('./index.html'):Response.error()))))
-});
+const CACHE='rethink-glutes-core-20260922-v2';
+const ASSETS=['./','./index.html','./app.css','./app.js','./data.js','./state.js','./coach.js','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png','./logo.png'];
+self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting())));
+self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
+self.addEventListener('fetch',e=>{if(e.request.method!=='GET')return;e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request).then(res=>{const copy=res.clone();caches.open(CACHE).then(c=>c.put(e.request,copy));return res}).catch(()=>caches.match('./index.html'))))});
