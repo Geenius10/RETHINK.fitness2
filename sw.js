@@ -1,4 +1,4 @@
-const CACHE='rethink-glutes-core-20260923b';
+const CACHE='rethink-glutes-core-20260924-final-audit';
 const ASSETS=['./','./index.html','./app.css','./app.js','./data.js','./state.js','./coach.js','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png','./logo.png'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
