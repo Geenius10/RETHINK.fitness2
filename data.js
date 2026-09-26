@@ -29,73 +29,26 @@ export const exercises=[
 {id:'plank-drag',name:'Plank Reach',cat:'Core Stability',level:2,equipment:'Zuhause',muscles:'Core Stability',steps:['Stabile Ausgangsposition einnehmen.','Bewegung kontrolliert und im schmerzfreien Bewegungsradius ausführen.','Spannung halten und sauber in die Ausgangsposition zurückkehren.'],cue:'Aus stabiler Plankposition einen Arm langsam nach vorn strecken. Becken und Brust bleiben möglichst ruhig.'},
 {id:'bird-dog',name:'Bird Dog',cat:'Core Stability',level:2,equipment:'Zuhause',muscles:'Core Stability',steps:['Stabile Ausgangsposition einnehmen.','Bewegung kontrolliert und im schmerzfreien Bewegungsradius ausführen.','Spannung halten und sauber in die Ausgangsposition zurückkehren.'],cue:'Im Vierfüßler gegengleichen Arm und Bein lang ausstrecken, ohne Becken oder Rücken zu verdrehen.'},
 ];
-export const weeks=[
-{week:1,date:'',title:'Einstieg',focus:'Technik festigen · 30–35 Min.',days:[
-{name:'Glute Squat',items:[['reverse-lunge-drive','3×8/Seite'],['bulgarian','3×8/Seite'],['band-row','3×10–12'],['glute-bridge','3×12–15'],['dead-bug','3×8/Seite']]},
-{name:'Glute Hinge',items:[['stepup-drive','3×8/Seite'],['sl-rdl','3×8/Seite'],['incline-pushup','3×10–12'],['hip-thrust','3×12–15'],['side-plank','3×30–45 s/Seite']]},
-{name:'Glute + Core',items:[['squat-knee-drive','3×8/Seite'],['reverse-lunge','3×8/Seite'],['band-pulldown','3×10–12'],['frog-pump','3×12–15'],['bird-dog','3×8/Seite']]},
-]},
-{week:2,date:'',title:'Einstieg +',focus:'Bewegungen festigen · 30–35 Min.',days:[
-{name:'Glute Squat',items:[['stepup-drive','3×8–10/Seite'],['bulgarian','3×8–10/Seite'],['incline-pushup','3×10–12'],['single-bridge','3×12–15'],['dead-bug','3×8–10/Seite']]},
-{name:'Glute Hinge',items:[['reverse-lunge-drive','3×8–10/Seite'],['kickstand-rdl','3×8–10/Seite'],['band-row','3×10–12'],['hip-thrust','3×12–15'],['side-plank','3×30–45 s/Seite']]},
-{name:'Glute + Core',items:[['lateral-lunge-drive','3×8–10/Seite'],['sumo-squat','3×8–10/Seite'],['band-pulldown','3×10–12'],['frog-pump','3×12–15'],['bear-tap','3×8–10/Seite']]},
-]},
-{week:3,date:'',title:'Aufbau I',focus:'Volumen und Wiederholungen steigern · 35–40 Min.',days:[
-{name:'Glute Squat',items:[['reverse-lunge-drive','3×10/Seite'],['bulgarian','3×10/Seite'],['band-row','3×10–15'],['single-bridge','3×12–15'],['dead-bug','3×10/Seite']]},
-{name:'Glute Hinge',items:[['stepup-drive','3×10/Seite'],['sl-rdl','3×10/Seite'],['pushup','3×10–15'],['hip-thrust','3×12–15'],['side-plank','3×30–45 s/Seite']]},
-{name:'Glute + Core',items:[['squat-knee-drive','3×10/Seite'],['reverse-lunge','3×10/Seite'],['band-pulldown','3×10–15'],['frog-pump','3×12–15'],['bear-tap','3×10/Seite']]},
-]},
-{week:4,date:'',title:'Aufbau I',focus:'Saubere Progression · 35–40 Min.',days:[
-{name:'Glute Squat',items:[['stepup-drive','3×10/Seite'],['bulgarian','3×10–12/Seite'],['pushup','3×10–15'],['single-bridge','3×12–15'],['plank-drag','3×10/Seite']]},
-{name:'Glute Hinge',items:[['reverse-lunge-drive','3×10/Seite'],['sl-rdl','3×10–12/Seite'],['band-row','3×10–15'],['hip-thrust','3×12–15'],['side-plank','3×30–45 s/Seite']]},
-{name:'Glute + Core',items:[['lateral-lunge-drive','3×10/Seite'],['sumo-squat','3×10–12/Seite'],['band-pulldown','3×10–15'],['bridge-march','3×12–15'],['dead-bug','3×10/Seite']]},
-]},
-{week:5,date:'',title:'Aufbau I+',focus:'Glute-Hauptübungen priorisieren · 35–40 Min.',days:[
-{name:'Glute Squat',items:[['squat-knee-drive','3×10–12/Seite'],['bulgarian','3×10–12/Seite'],['band-row','3×10–15'],['single-hip-thrust','3×10–12/Seite'],['dead-bug','3×10–12/Seite']]},
-{name:'Glute Hinge',items:[['stepup-drive','3×10–12/Seite'],['sl-rdl','3×10–12/Seite'],['pushup','3×10–15'],['hip-thrust','3×10–12/Seite'],['side-plank','3×30–45 s/Seite']]},
-{name:'Glute + Core',items:[['reverse-lunge-drive','3×10–12/Seite'],['tempo-squat','3×10–12/Seite'],['band-pulldown','3×10–15'],['frog-pump','3×10–12/Seite'],['bear-tap','3×10–12/Seite']]},
-]},
-{week:6,date:'',title:'Aufbau II',focus:'Anspruch steigern · 35–40 Min.',days:[
-{name:'Glute Squat',items:[['reverse-lunge-drive','3×10–12/Seite'],['bulgarian','3×10–12/Seite'],['pushup','3×10–15'],['single-hip-thrust','3×10–15'],['plank-drag','3×10–12/Seite']]},
-{name:'Glute Hinge',items:[['stepup-drive','3×10–12/Seite'],['sl-rdl','3×10–12/Seite'],['band-row','3×10–15'],['single-bridge','3×10–15'],['side-plank','3×30–45 s/Seite']]},
-{name:'Glute + Core',items:[['lateral-lunge-drive','3×10–12/Seite'],['tempo-squat','3×10–12/Seite'],['band-pulldown','3×10–15'],['hip-thrust','3×10–15'],['bear-tap','3×10–12/Seite']]},
-]},
-{week:7,date:'',title:'Aufbau II',focus:'Leistung bestätigen · 35–40 Min.',days:[
-{name:'Glute Squat',items:[['stepup-drive','3×12/Seite'],['bulgarian','3×10–12/Seite'],['band-row','3×8–12'],['single-hip-thrust','3×12–15'],['dead-bug','3×10–12/Seite']]},
-{name:'Glute Hinge',items:[['reverse-lunge-drive','3×12/Seite'],['sl-rdl','3×10–12/Seite'],['pike-pushup','3×8–12'],['hip-thrust','3×12–15'],['side-plank','3×30–45 s/Seite']]},
-{name:'Glute + Core',items:[['squat-knee-drive','3×12/Seite'],['reverse-lunge','3×10–12/Seite'],['band-pulldown','3×8–12'],['bridge-march','3×12–15'],['bear-tap','3×10–12/Seite']]},
-]},
-{week:8,date:'',title:'Aufbau II+',focus:'Kontrolle unter Ermüdung · 35–40 Min.',days:[
-{name:'Glute Squat',items:[['lateral-lunge-drive','3×10–12/Seite'],['bulgarian','3×12/Seite'],['pushup','3×10–15'],['single-bridge','3×12–15'],['plank-drag','3×10–12/Seite']]},
-{name:'Glute Hinge',items:[['stepup-drive','3×10–12/Seite'],['sl-rdl','3×12/Seite'],['band-row','3×10–15'],['single-hip-thrust','3×12–15'],['side-plank','3×30–45 s/Seite']]},
-{name:'Glute + Core',items:[['reverse-lunge-drive','3×10–12/Seite'],['tempo-squat','3×12/Seite'],['band-pulldown','3×10–15'],['frog-pump','3×12–15'],['dead-bug','3×10–12/Seite']]},
-]},
-{week:9,date:'',title:'Intensivierung',focus:'Schwierigere Varianten · 40–45 Min.',days:[
-{name:'Glute Squat',items:[['reverse-lunge-drive','3×12/Seite'],['bulgarian','3×10–12/Seite'],['decline-pushup','3×8–12'],['single-hip-thrust','3×12–15'],['dead-bug','3×12/Seite']]},
-{name:'Glute Hinge',items:[['stepup-drive','3×12/Seite'],['sl-rdl','3×10–12/Seite'],['band-row','3×8–12'],['hip-thrust','3×12–15'],['side-plank','3×40–50 s/Seite']]},
-{name:'Glute + Core',items:[['squat-knee-drive','3×12/Seite'],['tempo-squat','3×10–12/Seite'],['band-pulldown','3×8–12'],['single-bridge','3×12–15'],['bear-tap','3×12/Seite']]},
-]},
-{week:10,date:'',title:'Intensivierung',focus:'Glute-Arbeit priorisieren · 40–45 Min.',days:[
-{name:'Glute Squat',items:[['stepup-drive','3×12/Seite'],['bulgarian','3×12/Seite'],['band-row','3×8–12'],['single-hip-thrust','3×12–15'],['plank-drag','3×12/Seite']]},
-{name:'Glute Hinge',items:[['reverse-lunge-drive','3×12/Seite'],['sl-rdl','3×12/Seite'],['pike-pushup','3×8–12'],['hip-thrust','3×12–15'],['side-plank','3×40–50 s/Seite']]},
-{name:'Glute + Core',items:[['lateral-lunge-drive','3×12/Seite'],['reverse-lunge','3×12/Seite'],['band-pulldown','3×8–12'],['bridge-march','3×12–15'],['dead-bug','3×12/Seite']]},
-]},
-{week:11,date:'',title:'Intensivierung +',focus:'Stabile Leistung · 40–45 Min.',days:[
-{name:'Glute Squat',items:[['squat-knee-drive','3×12/Seite'],['bulgarian','3×12/Seite'],['decline-pushup','3×8–12'],['single-hip-thrust','3×12–15'],['dead-bug','3×12/Seite']]},
-{name:'Glute Hinge',items:[['stepup-drive','3×12/Seite'],['sl-rdl','3×12/Seite'],['band-row','3×8–12'],['single-bridge','3×12–15'],['side-plank','3×40–50 s/Seite']]},
-{name:'Glute + Core',items:[['reverse-lunge-drive','3×12/Seite'],['tempo-squat','3×12/Seite'],['band-pulldown','3×8–12'],['frog-pump','3×12–15'],['bear-tap','3×12/Seite']]},
-]},
-{week:12,date:'',title:'Peak',focus:'Höchste saubere Belastung · 40–45 Min.',days:[
-{name:'Glute Squat',items:[['reverse-lunge-drive','3×12–15/Seite'],['bulgarian','3×12/Seite'],['band-row','3×10–15'],['single-hip-thrust','3×12–15'],['plank-drag','3×12–15/Seite']]},
-{name:'Glute Hinge',items:[['stepup-drive','3×12–15/Seite'],['sl-rdl','3×12/Seite'],['pike-pushup','3×10–15'],['hip-thrust','3×12–15'],['side-plank','3×40–50 s/Seite']]},
-{name:'Glute + Core',items:[['lateral-lunge-drive','3×12–15/Seite'],['tempo-squat','3×12/Seite'],['band-pulldown','3×10–15'],['single-bridge','3×12–15'],['bear-tap','3×12–15/Seite']]},
-]},
-{week:13,date:'',title:'Abschluss',focus:'Fortschritt vergleichen · 35–45 Min.',days:[
-{name:'Glute Squat',items:[['reverse-lunge-drive','3×12/Seite'],['bulgarian','3×12/Seite'],['band-row','3×12–15'],['single-bridge','3×15'],['dead-bug','3×12/Seite']]},
-{name:'Glute Hinge',items:[['stepup-drive','3×12/Seite'],['sl-rdl','3×12/Seite'],['pushup','3×12–15'],['hip-thrust','3×15'],['side-plank','3×40–50 s/Seite']]},
-{name:'Glute + Core',items:[['squat-knee-drive','3×12/Seite'],['reverse-lunge','3×12/Seite'],['band-pulldown','3×12–15'],['frog-pump','3×15'],['bear-tap','3×12/Seite']]},
-]},
-];
+const phaseFor=w=>w<=2?['BASELINE','Technik & Ausgangsniveau · 30–35 Min.']:w<=4?['REPS','Wiederholungen steigern · 30–40 Min.']:w===5?['VOLUME','Hauptübungen priorisieren · 35–40 Min.']:w<=7?['PROGRESSION I','Nächste Stufe verdienen · 35–40 Min.']:w===8?['CONSOLIDATE','Neue Stufe festigen · 35–40 Min.']:w<=10?['PROGRESSION II','Schwierigkeit weiter steigern · 35–45 Min.']:w===11?['QUALITY','Volumen auf erreichtem Niveau · 35–45 Min.']:w===12?['PEAK','Höchste saubere Belastung · 40–45 Min.']:['BENCHMARK','Fortschritt sichtbar machen · 35–45 Min.'];
+const repFor=w=>w<=2?'8–10':w<=4?'10–12':w===5?'10–12':w<=8?'8–12':w<=11?'10–15':w===12?'8–12':'AMRAP sauber';
+const coreFor=w=>w<=2?'8–10/Seite':w<=5?'10–12/Seite':w<=9?'12–15/Seite':w<=12?'12–15/Seite':'AMRAP sauber';
+const holdFor=w=>w<=2?'30 s/Seite':w<=5?'35–40 s/Seite':w<=9?'40–45 s/Seite':w<=12?'45–50 s/Seite':'max. sauber';
+const setsFor=w=>w===1?2:w===5||w===11||w===12?4:3;
+const main=(w,target)=>`${setsFor(w)}×${target}`;
+const normal=(w,target)=>`${w===1?2:3}×${target}`;
+const planned={
+ squat:w=>w<=2?'reverse-lunge':w<=5?'tempo-squat':w<=8?'bulgarian':'bulgarian',
+ hinge:w=>w<=3?'kickstand-rdl':'sl-rdl',
+ bridge:w=>w<=2?'glute-bridge':w<=5?'hip-thrust':w<=8?'single-bridge':'single-hip-thrust',
+ push:w=>w<=2?'incline-pushup':w<=8?'pushup':'decline-pushup',
+ pull:w=>w<=6?'band-row':'band-pulldown',
+ core:w=>w<=2?'bird-dog':w<=5?'dead-bug':w<=8?'bear-tap':'plank-drag'
+};
+export const weeks=Array.from({length:13},(_,i)=>{const w=i+1,[title,focus]=phaseFor(w),rep=repFor(w);return {week:w,date:'',title,focus,days:[
+ {name:'A · SQUAT + GLUTES',items:[['reverse-lunge-drive',normal(w,w<3?'8/Seite':'10/Seite')],[planned.squat(w),main(w,rep+'/Seite')],[planned.pull(w),normal(w,rep)],[planned.bridge(w),main(w,rep)],[planned.core(w),normal(w,coreFor(w))]]},
+ {name:'B · HINGE + GLUTES',items:[['stepup-drive',normal(w,w<3?'8/Seite':'10/Seite')],[planned.hinge(w),main(w,rep+'/Seite')],[planned.push(w),normal(w,rep)],[planned.bridge(w),main(w,rep)],[w<=5?'side-plank':planned.core(w),normal(w,w<=5?holdFor(w):coreFor(w))]]},
+ {name:'C · GLUTES + CORE',items:[['squat-knee-drive',normal(w,w<3?'8/Seite':'10/Seite')],[planned.squat(w),main(w,rep+'/Seite')],[planned.pull(w),normal(w,rep)],[planned.bridge(w),main(w,rep)],[planned.core(w),normal(w,coreFor(w))]]}
+]}});
 export const intro={title:'',focus:'',days:[]};
 export const rules=[];
 export const glutesCoreProgram={id:'unused',name:'',subtitle:'',weeks:[]};

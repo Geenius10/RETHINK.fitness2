@@ -1,10 +1,24 @@
 export const ladders={
- push:['incline-pushup','pushup','decline-pushup'],
- bridge:['glute-bridge','hip-thrust','single-hip-thrust'],
- hinge:['kickstand-rdl','sl-rdl'],
- squat:['reverse-lunge','bulgarian'],
- core:['bird-dog','dead-bug','bear-tap']
+  squat:['sumo-squat','reverse-lunge','tempo-squat','bulgarian'],
+  hinge:['kickstand-rdl','sl-rdl'],
+  bridge:['glute-bridge','hip-thrust','single-bridge','single-hip-thrust'],
+  push:['incline-pushup','pushup','decline-pushup','pike-pushup'],
+  pull:['band-row','band-pulldown'],
+  core:['bird-dog','dead-bug','bear-tap','plank-drag']
 };
 export const familyById=new Map(Object.entries(ladders).flatMap(([family,ids])=>ids.map(id=>[id,family])));
-export function resolveExercise(id,adapt={}){const family=familyById.get(id);if(!family)return{id,changed:false,family:null};const ladder=ladders[family],base=ladder.indexOf(id),offset=Math.max(-1,Math.min(1,Number(adapt[family]||0))),idx=Math.max(0,Math.min(ladder.length-1,base+offset));return{id:ladder[idx],base:id,changed:idx!==base,family}}
-export function applyRating({family,value,previous,ratings,adapt}){if(!family||![-1,0,1].includes(value))return;let score=Number(ratings[`score:${family}`]||0);if(Number.isFinite(previous))score-=previous;score+=value;ratings[`score:${family}`]=score;if(score>=2){adapt[family]=Math.min(1,Number(adapt[family]||0)+1);ratings[`score:${family}`]=0}else if(score<=-2){adapt[family]=Math.max(-1,Number(adapt[family]||0)-1);ratings[`score:${family}`]=0}}
+export function resolveExercise(id,adapt={}){
+  const family=familyById.get(id);if(!family)return{id,base:id,changed:false,family:null,level:null,maxLevel:null};
+  const ladder=ladders[family],base=Math.max(0,ladder.indexOf(id)),offset=Number(adapt[family]||0),idx=Math.max(0,Math.min(ladder.length-1,base+offset));
+  return{id:ladder[idx],base:id,changed:idx!==base,family,level:idx+1,maxLevel:ladder.length};
+}
+export function applyRating({family,value,ratings,adapt}){
+  if(!family||![-1,0,1].includes(value))return;
+  const key=`streak:${family}`;
+  let streak=Number(ratings[key]||0);
+  if(value===0){ratings[key]=0;return}
+  if(Math.sign(streak)!==Math.sign(value))streak=0;
+  streak+=value;ratings[key]=streak;
+  if(streak>=2){adapt[family]=Number(adapt[family]||0)+1;ratings[key]=0}
+  if(streak<=-2){adapt[family]=Number(adapt[family]||0)-1;ratings[key]=0}
+}
